@@ -16,7 +16,7 @@ win.setWindowTitle('Light Curve')
 p1 = win.addPlot()
 p1.setDownsampling(mode='peak')
 p1.setClipToView(True)
-curve1 = p1.plot()
+curve1 = p1.plot(pen=(200,200,200), symbolBrush=(255,0,0), symbolPen='w')
 
 data = np.empty(100)
 ptr = 0
