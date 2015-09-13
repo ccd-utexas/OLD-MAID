@@ -40,7 +40,7 @@ p1.addItem(l1)
 ptr = 0
 def newdata():
     global data,ptr
-    data[ptr] = np.random.normal()+4.*np.sin(2.*np.pi*ptr/5.)+3.*np.sin(2.*np.pi*ptr/3.)+2.*np.sin(2.*np.pi*ptr/10000)
+    data[ptr] = np.random.normal()+4.*np.sin(2.*np.pi*ptr/5.)+3.*np.sin(2.*np.pi*ptr/3.)+0.2*np.sin(2.*np.pi*ptr/10000)
     ptr += 1
     #Double length of array as needed to hold new data.
     if ptr >= data.shape[0]:
