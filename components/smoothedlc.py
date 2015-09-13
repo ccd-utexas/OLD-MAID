@@ -1,21 +1,30 @@
 # -*- coding: utf-8 -*-
 """
-Standalone light curve display.
+Standalone smoothed light curve display.
 
-For now we use a stream of random numbers as a stand-in.  I copy the scrolling
-behavior of middle-right plot in scrollingPlots.py PyQtGraph example.  If you
-click on a point, it toggles whether it is considered a "bad" point and 
-ignored.
+This should basically be the same as the main lightcurve display, but it doen't
+need to have the same ignore functionality.  Instead it should have a smoothing
+slider to decide the kernel width.
 """
 
 import pyqtgraph as pg
 from pyqtgraph.Qt import QtCore, QtGui
 import numpy as np
 
+#define smoothing function
+winsize = 5.
+def smooth(flux, window_size):
+    #make sure flux is longer than window_size
+    if len(flux) < window_size:
+        return flux
+    else:
+        window = np.ones(int(window_size))/float(window_size)
+        return np.convolve(flux, window, 'same')
+
 #setup display
 win = pg.GraphicsWindow()
 print type(win)
-win.setWindowTitle('Light Curve')
+win.setWindowTitle('Smoothed Light Curve')
 
 
 #Make it a plot
@@ -30,13 +39,19 @@ bad = []
 
 #Set up plot components
 s1 = pg.ScatterPlotItem(brush=(255,0,0), pen='w',symbol='o')
-s2 = pg.ScatterPlotItem(brush=(255,0,0), pen='b',symbol='o') #bad points
 l1 = pg.PlotCurveItem()
+
 
 #Add components to plot object.
 p1.addItem(s1)
-p1.addItem(s2)
 p1.addItem(l1)
+
+#Add tickslider
+ts = pg.TickSliderItem(title='smooth level')
+for i in range(1,11):
+    ts.addTick(i)
+win.nextRow()
+win.addItem(ts)
 
 
 #Stream data
@@ -58,32 +73,14 @@ def update():
     #Identify which points to include/exclude
     goodmask=np.ones(len(data), np.bool)
     goodmask[bad] = 0
-    badmask = np.zeros(len(data), np.bool)
-    badmask[bad] = 1
     times = np.arange(len(data))#Placeholder for real timestamps.
-    s1.setData(times[goodmask[:ptr]],data[goodmask[:ptr]])
-    s2.setData(times[badmask[:ptr]],data[badmask[:ptr]])
-    l1.setData(times[goodmask[:ptr]],data[goodmask[:ptr]])
+    s1.setData(times[goodmask[:ptr]],smooth(data[goodmask[:ptr]],winsize))
+    l1.setData(times[goodmask[:ptr]],smooth(data[goodmask[:ptr]],winsize))
 
 newdata()
 timer = pg.QtCore.QTimer()
 timer.timeout.connect(newdata)
 timer.start(1000)
-
-# Make points change color when clicked
-## Make all plots clickable
-def clicked(plot, points):
-    global bad
-    #print("clicked points", points)
-    for p in points:
-        if p.pos()[0] in bad:
-            bad.remove(p.pos()[0])
-        else:
-            bad.append(p.pos()[0])
-    update()
-    
-s1.sigClicked.connect(clicked)
-s2.sigClicked.connect(clicked)
 
 
 ## Start Qt event loop unless running in interactive mode or using pyside.
