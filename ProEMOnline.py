@@ -182,21 +182,40 @@ w3 = pg.PlotWidget(title="Fourier Transform")
 curve = w3.plot(pen='y')
 data = np.random.normal(size=(10,1000))
 ptr = 0
-def update():
+def ftupdate():
     global curve, data, ptr, w3
     curve.setData(data[ptr%10])
     if ptr == 0:
         w3.enableAutoRange('xy', False)  ## stop auto-scaling after the first data set is plotted
     ptr += 1
 timer = QtCore.QTimer()
-timer.timeout.connect(update)
+timer.timeout.connect(ftupdate)
 timer.start(50)
 d3.addWidget(w3)
 
+
+
+
 ## Smoothed Light Curve
-w4 = pg.PlotWidget(title="Dock 4 plot")
-w4.plot(np.random.normal(size=100))
+#define smoothing function
+winsize = 5.#win size in frames
+def smooth(flux, window_size):
+    #make sure flux is longer than window_size
+    if len(flux) < window_size:
+        return flux
+    else:
+        window = np.ones(int(window_size))/float(window_size)
+        return np.convolve(flux, window, 'same')
+w4 = pg.PlotWidget(title="Dock 4 plot",labels={'left': 'smoothed flux', 'bottom': 'frame #'})
+ss1 = pg.ScatterPlotItem(brush=(255,0,0), pen='w',symbol='o')
+sl1 = pg.PlotCurveItem()
+w4.addItem(ss1)
+w4.addItem(sl1)
 d4.addWidget(w4)
+
+
+
+
 
 ## Image
 w5 = pg.ImageView()
@@ -264,6 +283,8 @@ def update():
     s1.setData(times[goodmask[:ptr]],data[goodmask[:ptr]])
     s2.setData(times[badmask[:ptr]],data[badmask[:ptr]])
     l1.setData(times[goodmask[:ptr]],data[goodmask[:ptr]])
+    ss1.setData(times[goodmask[:ptr]],smooth(data[goodmask[:ptr]],winsize))
+    sl1.setData(times[goodmask[:ptr]],smooth(data[goodmask[:ptr]],winsize))
 
 
 newdata()
