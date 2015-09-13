@@ -13,9 +13,9 @@ Menu bar
 
 import pyqtgraph as pg
 from pyqtgraph.Qt import QtCore, QtGui
-#import pyqtgraph.console
+import pyqtgraph.console
 import numpy as np
-#import math
+import math
 import astropy.io.fits as fits
 
 from pyqtgraph.dockarea import *
@@ -216,82 +216,10 @@ def click(event):
 w5.getImageItem().mouseClickEvent = click
 d5.addWidget(w5)
 
-
-
-
-
 ## Light Curve
-w6 = pg.PlotWidget(title="Dock 6 plot",labels={'left': 'rel. flux', 'bottom': 'frame #'})
-
-##We need to keep track of two things:
-# - The time series data
-# - The indices of selected points
-data = np.empty(100)
-bad = []
-
-#Set up plot components
-s1 = pg.ScatterPlotItem(brush=(255,0,0), pen='w',symbol='o')
-s2 = pg.ScatterPlotItem(brush=(255,0,0), pen='b',symbol='o') #bad points
-l1 = pg.PlotCurveItem()
-
-#Add components to plot object.
-w6.addItem(s1)
-w6.addItem(s2)
-w6.addItem(l1)
-
-#Stream data
-ptr = 0
-def newdata():
-    global data,ptr
-    data[ptr] = np.random.normal()
-    ptr += 1
-    #Double length of array as needed to hold new data.
-    if ptr >= data.shape[0]:
-        tmp = data
-        data = np.empty(data.shape[0] * 2)
-        data[:tmp.shape[0]] = tmp
-    update()
-    
-#Update display.
-def update():
-    global data,ptr,bad
-    #Identify which points to include/exclude
-    goodmask=np.ones(len(data), np.bool)
-    goodmask[bad] = 0
-    badmask = np.zeros(len(data), np.bool)
-    badmask[bad] = 1
-    times = np.arange(len(data))#Placeholder for real timestamps.
-    s1.setData(times[goodmask[:ptr]],data[goodmask[:ptr]])
-    s2.setData(times[badmask[:ptr]],data[badmask[:ptr]])
-    l1.setData(times[goodmask[:ptr]],data[goodmask[:ptr]])
-
-
-newdata()
-timer = pg.QtCore.QTimer()
-timer.timeout.connect(newdata)
-timer.start(1000)
-
-
-# Make points change color when clicked
-## Make all plots clickable
-def clicked(plot, points):
-    global bad
-    #print("clicked points", points)
-    for p in points:
-        if p.pos()[0] in bad:
-            bad.remove(p.pos()[0])
-        else:
-            bad.append(p.pos()[0])
-    update()
-    
-s1.sigClicked.connect(clicked)
-s2.sigClicked.connect(clicked)
-
+w6 = pg.PlotWidget(title="Dock 6 plot")
+w6.plot(np.random.normal(size=100))
 d6.addWidget(w6)
-
-
-
-
 
 ## Smoothed Light Curve
 w7 = pg.PlotWidget(title="Dock 7 plot")
