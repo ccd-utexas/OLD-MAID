@@ -17,6 +17,8 @@ from pyqtgraph.Qt import QtCore, QtGui
 import numpy as np
 #import math
 import astropy.io.fits as fits
+from astroML.fourier import FT_continuous
+from scipy.interpolate import interp1d
 
 from pyqtgraph.dockarea import *
 
@@ -141,6 +143,10 @@ area.addDock(d8, 'above', d7)
 
 ## Add widgets into each dock
 
+
+
+
+
 ## First dock holds the Observing Log
 w1 = pg.LayoutWidget()
 observer = QtGui.QLabel('Observer')
@@ -169,6 +175,12 @@ w1.addWidget(logEdit, 4, 1, 6, 1)
 d1.addWidget(w1)
 
 
+
+
+
+
+
+
 ## Process Log
 w2 = pg.LayoutWidget()
 processLog = QtGui.QTextEdit()
@@ -177,20 +189,15 @@ processLog.setReadOnly(True)
 w2.addWidget(processLog, 0, 0, 6, 1)
 d2.addWidget(w2)
 
+
+
+
+
+
+
 ## Fourier Transform - Just shows random updating noise for now
-w3 = pg.PlotWidget(title="Fourier Transform")
-curve = w3.plot(pen='y')
-data = np.random.normal(size=(10,1000))
-ptr = 0
-def ftupdate():
-    global curve, data, ptr, w3
-    curve.setData(data[ptr%10])
-    if ptr == 0:
-        w3.enableAutoRange('xy', False)  ## stop auto-scaling after the first data set is plotted
-    ptr += 1
-timer = QtCore.QTimer()
-timer.timeout.connect(ftupdate)
-timer.start(50)
+w3 = pg.PlotWidget(title="Fourier Transform",labels={'left': 'amplitude', 'bottom': 'freq (per frame)'})
+ft = w3.plot(pen='y')
 d3.addWidget(w3)
 
 
@@ -258,11 +265,17 @@ w6.addItem(s1)
 w6.addItem(s2)
 w6.addItem(l1)
 
+
+
+
+
+
+
 #Stream data
 ptr = 0
 def newdata():
     global data,ptr
-    data[ptr] = np.random.normal()
+    data[ptr] = np.random.normal()+1.*np.sin(2.*np.pi*ptr/20)+0.4*np.sin(2.*np.pi*ptr/30)+0.5*np.sin(2.*np.pi*ptr/1000)
     ptr += 1
     #Double length of array as needed to hold new data.
     if ptr >= data.shape[0]:
@@ -285,6 +298,15 @@ def update():
     l1.setData(times[goodmask[:ptr]],data[goodmask[:ptr]])
     ss1.setData(times[goodmask[:ptr]],smooth(data[goodmask[:ptr]],winsize))
     sl1.setData(times[goodmask[:ptr]],smooth(data[goodmask[:ptr]],winsize))
+    xnew = np.arange(min(times[goodmask[:ptr]]),max(times[goodmask[:ptr]]))
+    if len(xnew) > 1 and len(xnew) % 2 == 0:
+        tofourier = interp1d(times[goodmask[:ptr]],data[goodmask[:ptr]])
+        xnew = np.arange(min(times[goodmask[:ptr]]),max(times[goodmask[:ptr]]))
+        ynew = tofourier(xnew)
+        f,H = FT_continuous(xnew,ynew)
+        H=2*np.sqrt(H.real**2 + H.imag**2.)/len(ynew)
+        ft.setData(f[len(f)/2.:],H[len(f)/2.:])
+
 
 
 newdata()
