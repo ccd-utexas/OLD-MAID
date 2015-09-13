@@ -8,6 +8,8 @@ Left column: Observing Log
 Center column: Plots
 Right column: Images and Process Log
 Menu bar
+
+Keaton wrote this.
 """
 
 
@@ -22,6 +24,12 @@ from scipy.interpolate import interp1d
 
 from pyqtgraph.dockarea import *
 
+#### BEGIN PROGRAM ####
+
+
+
+#### Define all variables that everything needs access to:
+
 #This program operates in four stages.
 #Stage 0 - Program Initialized, waiting to open SPE file.
 #Stage 1 - SPE file open, stars are being selected
@@ -29,6 +37,11 @@ from pyqtgraph.dockarea import *
 #Stage 3 - End of data acquisition detected. Final data written to file.  Timestamps verified.  Log saved.  Weather/time log data saved.
 # -> revert back to Stage 0.
 stage=0 #start at 0
+
+
+
+
+
 
 #Keep track of the current frame:
 #One version that we do science on
@@ -132,14 +145,16 @@ d5 = Dock("Dock5 - Image", size=(500,200))
 d6 = Dock("Dock6 (tabbed) - Light Curve", size=(500,200))
 d7 = Dock("Dock7 (tabbed) - Comparison Counts", size=(500,200))
 d8 = Dock("Dock8 (tabbed) - Seeing", size=(500,200))
-area.addDock(d1, 'left')      ## place d1 at left edge of dock area (it will fill the whole space since there are no other docks yet)
-area.addDock(d2, 'right')     ## place d2 at right edge of dock area
-area.addDock(d3, 'left', d2)## place d3 at the left edge of d2
-area.addDock(d4, 'top',d3)     ## place d4 on top d3
-area.addDock(d5, 'top',d2)  ## place d5 on top d2
+area.addDock(d1, 'right')      ## place d1 at right edge of dock area (it will fill the whole space since there are no other docks yet)
+area.addDock(d4, 'left',d1)     ## place d4 to the left of d1
 area.addDock(d6, 'above', d4)  ## place d6 above d4
-area.addDock(d7, 'top', d3)   
-area.addDock(d8, 'above', d7)
+area.addDock(d5, 'bottom',d1)  ## place d5 below d1
+area.addDock(d7, 'left', d5)   ## place d7 to the left of d5
+area.addDock(d8, 'above', d7)  # place d8 above d7
+area.addDock(d2, 'bottom', d5)     ## place d2 below d5
+area.addDock(d3, 'left', d2) ## place d3 to the left of d2
+
+
 
 ## Add widgets into each dock
 
@@ -312,7 +327,7 @@ def update():
 newdata()
 timer = pg.QtCore.QTimer()
 timer.timeout.connect(newdata)
-timer.start(1000)
+timer.start(100)
 
 
 # Make points change color when clicked
