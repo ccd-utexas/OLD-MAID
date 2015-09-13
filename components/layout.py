@@ -17,8 +17,10 @@ import pyqtgraph.console
 import numpy as np
 import math
 import astropy.io.fits as fits
-
+from glob import glob
 from pyqtgraph.dockarea import *
+import pickle #for saving layouts
+
 
 #This program operates in four stages.
 #Stage 0 - Program Initialized, waiting to open SPE file.
@@ -46,7 +48,7 @@ def newframe(fitsfile):
     return img,displayimg
 
 #Start with some initial example file
-fitsfile = 'ProEMExample.fits' #initial file
+fitsfile = '../ProEMExample.fits' #initial file
 img,displayimg = newframe(fitsfile)
 
 #Use a function to display a new image
@@ -63,6 +65,7 @@ def displayframe(displayimg,autoscale=False):
 
 #Set up a list to keep track of star positions
 starpos=[]
+test= 'stuff'
 
 #Open File functionality
 class WithMenu(QtGui.QMainWindow):
@@ -73,24 +76,55 @@ class WithMenu(QtGui.QMainWindow):
         self.initUI()
         
     def initUI(self):      
-
+        
+        #SETUP THE MENUBAR!
         #Note: Exit is protected on Mac.  This may work on Windows.
         exitAction = QtGui.QAction('Exit', self)        
         exitAction.setShortcut('Ctrl+Q')
         exitAction.setStatusTip('Exit application')
-        exitAction.triggered.connect(self.showDialog)
+        exitAction.triggered.connect(self.closeEvent)
 
         openFile = QtGui.QAction('Open', self)
         openFile.setShortcut('Ctrl+O')
         openFile.setStatusTip('Open new File')
         openFile.triggered.connect(self.showDialog)
         
+        saveLayout = QtGui.QAction('Save layout', self)
+        saveLayout.setStatusTip('Save the current dock layout')
+        saveLayout.triggered.connect(self.saveLayout)
+        
+        loadLayout = QtGui.QAction('Load layout', self)
+        loadLayout.setStatusTip('Load a saved dock layout')
+        loadLayout.triggered.connect(self.loadLayout)
+        
+        
         menubar = self.menuBar()
         fileMenu = menubar.addMenu('File')
         fileMenu.addAction(openFile)
-        fileMenu.addAction(exitAction)
+        fileMenu.addAction(saveLayout)
+        fileMenu.addAction(loadLayout)
+        #fileMenu.addAction(exitAction)
 
+    def saveLayout(self):
+        layoutName, ok = QtGui.QInputDialog.getText(self, 'Save layout', 
+            'Enter name for this layout:')
+        if ok:
+            pickle.dump( area.saveState(), open( '../layouts/'+layoutName+".p", "wb" ) )
+    
+    def loadLayout(self):
+        directory = '../layouts/'
+        extension = '.p'
+        layouts = glob(directory + '*' + extension)
+        if len(layouts) == 0:
+            _ = QtGui.QMessageBox.warning(self,'Load layout','No saved layouts found.')
+        else:
+            layouts = [layout[len(directory):-1*len(extension)] for layout in layouts]
+            layout, ok = QtGui.QInputDialog().getItem(self,'Load layout','Select layout: ',layouts)      
+            if ok:
+                state = pickle.load(open(directory + layout + extension, "rb" ) )
+                area.restoreState(state)
         
+            
     def showDialog(self):
 
         fname = QtGui.QFileDialog.getOpenFileName(self, 'Open file', 

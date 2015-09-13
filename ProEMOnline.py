@@ -17,6 +17,8 @@ import pyqtgraph as pg
 from pyqtgraph.Qt import QtCore, QtGui
 #import pyqtgraph.console
 import numpy as np
+import pickle #for saving layouts
+from glob import glob
 #import math
 import astropy.io.fits as fits
 from astroML.fourier import FT_continuous
@@ -89,23 +91,52 @@ class WithMenu(QtGui.QMainWindow):
         
     def initUI(self):      
 
+        #SETUP THE MENUBAR!
         #Note: Exit is protected on Mac.  This may work on Windows.
         exitAction = QtGui.QAction('Exit', self)        
         exitAction.setShortcut('Ctrl+Q')
         exitAction.setStatusTip('Exit application')
-        exitAction.triggered.connect(self.showDialog)
+        exitAction.triggered.connect(self.closeEvent)
 
         openFile = QtGui.QAction('Open', self)
         openFile.setShortcut('Ctrl+O')
         openFile.setStatusTip('Open new File')
         openFile.triggered.connect(self.showDialog)
         
+        saveLayout = QtGui.QAction('Save layout', self)
+        saveLayout.setStatusTip('Save the current dock layout')
+        saveLayout.triggered.connect(self.saveLayout)
+        
+        loadLayout = QtGui.QAction('Load layout', self)
+        loadLayout.setStatusTip('Load a saved dock layout')
+        loadLayout.triggered.connect(self.loadLayout)
+        
         menubar = self.menuBar()
         fileMenu = menubar.addMenu('File')
         fileMenu.addAction(openFile)
-        fileMenu.addAction(exitAction)
+        fileMenu.addAction(saveLayout)
+        fileMenu.addAction(loadLayout)
+        #fileMenu.addAction(exitAction)
 
-        
+    layoutsDir = './layouts/'
+    layoutsExt = '.p'
+    def saveLayout(self):
+        layoutName, ok = QtGui.QInputDialog.getText(self, 'Save layout', 
+            'Enter name for this layout:')
+        if ok:
+            pickle.dump( area.saveState(), open( self.layoutsDir+layoutName+self.layoutsExt, "wb" ) )
+    
+    def loadLayout(self):
+        layouts = glob(self.layoutsDir+'*'+self.layoutsExt)
+        if len(layouts) == 0:
+            _ = QtGui.QMessageBox.warning(self,'Load layout','No saved layouts found.')
+        else:
+            layouts = [layout[len(self.layoutsDir):-1*len(self.layoutsExt)] for layout in layouts]
+            layout, ok = QtGui.QInputDialog().getItem(self,'Load layout','Select layout: ',layouts)      
+            if ok:
+                state = pickle.load(open(self.layoutsDir+layout+self.layoutsExt, "rb" ) )
+                area.restoreState(state)
+    
     def showDialog(self):
 
         fname = QtGui.QFileDialog.getOpenFileName(self, 'Open file', 
