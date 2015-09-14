@@ -120,7 +120,7 @@ class WithMenu(QtGui.QMainWindow):
         fileMenu.addAction(openFile)
         fileMenu.addAction(saveLayout)
         fileMenu.addAction(loadLayout)
-        #fileMenu.addAction(exitAction)
+        fileMenu.addAction(exitAction)
 
     layoutsDir = './layouts/'
     layoutsExt = '.p'
