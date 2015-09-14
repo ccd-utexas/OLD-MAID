@@ -35,14 +35,15 @@ from pyqtgraph.dockarea import *
 #This program operates in four stages.
 #Stage 0 - Program Initialized, waiting to open SPE file.
 #Stage 1 - SPE file open, stars are being selected
-#Stage 2 - Online data reduction and aperture photometry/plotting is done.
+#Stage 2 - Online data reduction and aperture photometry/plotting is being done.
 #Stage 3 - End of data acquisition detected. Final data written to file.  Timestamps verified.  Log saved.  Weather/time log data saved.
 # -> revert back to Stage 0.
 stage=0 #start at 0
-
-
-
-
+def stagechange(num):
+    if num in range(4):
+        log("Program stage = "+str(num),1)
+        stage=num
+    else: log("Attempt to change stage to invalid value ("+str(num)+")",3)
 
 
 #Keep track of the current frame:
@@ -65,6 +66,9 @@ def newframe(fitsfile):
 #Start with some initial example file
 fitsfile = 'ProEMExample.fits' #initial file
 img,displayimg = newframe(fitsfile)
+
+#In reality, we want to operate on an SPE file:
+spefile = ''
 
 #Use a function to display a new image
 #Autoscaling levels optional
@@ -98,10 +102,10 @@ class WithMenu(QtGui.QMainWindow):
         exitAction.setStatusTip('Exit application')
         exitAction.triggered.connect(self.closeEvent)
 
-        openFile = QtGui.QAction('Open', self)
+        openFile = QtGui.QAction('&Open SPE', self)
         openFile.setShortcut('Ctrl+O')
-        openFile.setStatusTip('Open new File')
-        openFile.triggered.connect(self.showDialog)
+        openFile.setStatusTip('Open SPE File')
+        openFile.triggered.connect(self.openSPE)
         
         saveLayout = QtGui.QAction('Save layout', self)
         saveLayout.setStatusTip('Save the current dock layout')
@@ -137,14 +141,24 @@ class WithMenu(QtGui.QMainWindow):
                 state = pickle.load(open(self.layoutsDir+layout+self.layoutsExt, "rb" ) )
                 area.restoreState(state)
     
-    def showDialog(self):
-
-        fname = QtGui.QFileDialog.getOpenFileName(self, 'Open file', 
-                '/home')
-            #print str(fname)
+    def openSPE(self):
+        '''
+        Select a new target SPE file to work on.
         
-        img = fits.getdata(str(fname))[0]
-        w5.setImage(img)
+        
+        Open dialog box, select file, verify that it is a SPE file.
+        '''
+        fname = QtGui.QFileDialog.getOpenFileName(self, 'Open SPE file', 
+                '/home',filter='Data (*.spe)')
+        print fname
+        if fname[-4:]=='.spe':
+            log("Opening file "+fname,1)
+            self.spefile = fname
+            stagechange(1)
+        else: log("Invalid file type (must be SPE).",3)
+        
+        #img = fits.getdata(str(fname))[0]
+        #w5.setImage(img)
 
     def closeEvent(self, event):
         
@@ -188,8 +202,6 @@ area.addDock(d3, 'left', d2) ## place d3 to the left of d2
 
 
 ## Add widgets into each dock
-
-
 
 
 
@@ -284,13 +296,29 @@ def click(event):
     starpos.append([pos.x(),pos.y()])
     #img[pos.x(),pos.y()]=[255,255-img[pos.x(),pos.y(),1],255-img[pos.x(),pos.y(),1]]
     #w5.setImage(img,autoRange=False)
-    processLog.append("Star selected at "+str( (int(pos.x()),int(pos.y())) ))
+    log("Star selected at "+str( (int(pos.x()),int(pos.y())) ),level=1)
 w5.getImageItem().mouseClickEvent = click
 d5.addWidget(w5)
 
 
-
-
+def log(text,level=0):
+    '''log messages to the process log and log file
+    
+    text is the message for the log
+    level indicated how important it is:
+    level=0: Routine background process: gray text;
+    level=1: User influenced action: black text;
+    level=2: Major change: bold black;
+    level=3: Warning message: bold red; 
+    '''
+    colors = ['darkgray','black','black','red']
+    prefix = ['','','','WARNING: ']
+    fontweight = [50,50,75,75]
+    if level in range(4):
+        processLog.setTextColor(QtGui.QColor(colors[level]))
+        processLog.setFontWeight(fontweight[level])
+        processLog.append(prefix[level]+text)
+    else: log('Level assigned to message "'+text+'" out of range.',level=3)
 
 ## Light Curve
 w6 = pg.PlotWidget(title="Dock 6 plot",labels={'left': 'rel. flux', 'bottom': 'frame #'})
@@ -355,10 +383,19 @@ def update():
 
 
 
+# I think everything is set up enough to start doing stuff
+# Send initial message to process log.
+log("ProEMOnline initialized",2)
+log("Development version.  Do not trust.",3)
+stagechange(0)
+log("Open SPE file to begin analysis.",1)
+
+
 newdata()
 timer = pg.QtCore.QTimer()
 timer.timeout.connect(newdata)
 timer.start(100)
+
 
 
 # Make points change color when clicked
