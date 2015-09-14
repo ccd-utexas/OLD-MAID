@@ -394,7 +394,7 @@ log("Open SPE file to begin analysis.",1)
 newdata()
 timer = pg.QtCore.QTimer()
 timer.timeout.connect(newdata)
-timer.start(100)
+timer.start(1000)
 
 
 
