@@ -285,7 +285,7 @@ d4.addWidget(w4)
 ## Image
 w5 = pg.ImageView()
 w5.ui.roiBtn.hide()
-w5.ui.normBtn.hide()
+#w5.ui.normBtn.hide() #Causing trouble on windows
 displayframe(displayimg,autoscale=True)
 
 def click(event):
