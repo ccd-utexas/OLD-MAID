@@ -100,7 +100,7 @@ class WithMenu(QtGui.QMainWindow):
         exitAction = QtGui.QAction('Exit', self)        
         exitAction.setShortcut('Ctrl+Q')
         exitAction.setStatusTip('Exit application')
-        exitAction.triggered.connect(self.closeEvent)
+        exitAction.triggered.connect(QtGui.qApp.quit)
 
         openFile = QtGui.QAction('&Open SPE', self)
         openFile.setShortcut('Ctrl+O')
