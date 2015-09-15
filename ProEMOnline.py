@@ -278,7 +278,17 @@ d3.addWidget(w3)
 w5 = pg.ImageView()
 w5.ui.roiBtn.hide()
 #w5.ui.normBtn.hide() #Causing trouble on windows
-displayframe(displayimg,autoscale=True)
+#displayframe(displayimg,autoscale=True) #No image yet
+#Define function for selecting stars.
+def click(event):
+    event.accept()
+    pos = event.pos()
+    #check if we're marking or unmarking a star
+    #if pos.
+    starpos.append([pos.x(),pos.y()])
+    #img[pos.x(),pos.y()]=[255,255-img[pos.x(),pos.y(),1],255-img[pos.x(),pos.y(),1]]
+    #w5.setImage(img,autoRange=False)
+    log("Star selected at "+str( (int(pos.x()),int(pos.y())) ),level=1)
 w5.getImageItem().mouseClickEvent = click #Function defined below
 d5.addWidget(w5)
 
@@ -372,19 +382,6 @@ starpos=[]
 
 
 
-
-
-
-
-def click(event):
-    event.accept()
-    pos = event.pos()
-    #check if we're marking or unmarking a star
-    #if pos.
-    starpos.append([pos.x(),pos.y()])
-    #img[pos.x(),pos.y()]=[255,255-img[pos.x(),pos.y(),1],255-img[pos.x(),pos.y(),1]]
-    #w5.setImage(img,autoRange=False)
-    log("Star selected at "+str( (int(pos.x()),int(pos.y())) ),level=1)
 
 ##We need to keep track of two things:
 # - The time series data
