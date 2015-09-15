@@ -13,6 +13,7 @@ Keaton wrote this.
 """
 
 
+#Import everything you'll need
 import pyqtgraph as pg
 from pyqtgraph.Qt import QtCore, QtGui
 #import pyqtgraph.console
@@ -29,9 +30,7 @@ from pyqtgraph.dockarea import *
 #### BEGIN PROGRAM ####
 
 
-
-#### Define all variables that everything needs access to:
-
+#The organization and behavoir of the program are as follows:
 #This program operates in four stages.
 #Stage 0 - Program Initialized, waiting to open SPE file.
 #Stage 1 - SPE file open, stars are being selected
@@ -44,6 +43,118 @@ def stagechange(num):
         log("Program stage = "+str(num),1)
         stage=num
     else: log("Attempt to change stage to invalid value ("+str(num)+")",3)
+
+
+
+#### STAGE 1 ####
+#Set up the general GUI aspects
+
+#Set up main window with menu items
+class WithMenu(QtGui.QMainWindow):
+    
+    def __init__(self):
+        super(WithMenu, self).__init__()
+        
+        self.initUI()
+        
+    def initUI(self):      
+
+        #SETUP THE MENUBAR!
+        #Note: Exit is protected on Mac.  This works on Windows.
+        exitAction = QtGui.QAction('Exit', self)        
+        exitAction.setShortcut('Ctrl+Q')
+        exitAction.setStatusTip('Exit application')
+        exitAction.triggered.connect(QtGui.qApp.quit)
+        
+        #Open SPE
+        openFile = QtGui.QAction('&Open SPE', self)
+        openFile.setShortcut('Ctrl+O')
+        openFile.setStatusTip('Open SPE File')
+        openFile.triggered.connect(self.openSPE)
+        
+        #Save Layout
+        saveLayout = QtGui.QAction('Save layout', self)
+        saveLayout.setStatusTip('Save the current dock layout')
+        saveLayout.triggered.connect(self.saveLayout)
+        
+        #Load Layout
+        loadLayout = QtGui.QAction('Load layout', self)
+        loadLayout.setStatusTip('Load a saved dock layout')
+        loadLayout.triggered.connect(self.loadLayout)
+        
+        #Menubar
+        menubar = self.menuBar()
+        fileMenu = menubar.addMenu('File')
+        fileMenu.addAction(openFile)
+        fileMenu.addAction(saveLayout)
+        fileMenu.addAction(loadLayout)
+        fileMenu.addAction(exitAction)
+
+    #Functions to save and load layouts
+    layoutsDir = './layouts/'
+    layoutsExt = '.p'
+    def saveLayout(self):
+        layoutName, ok = QtGui.QInputDialog.getText(self, 'Save layout', 
+            'Enter name for this layout:')
+        if ok:
+            #Save dict in pickle format
+            pickle.dump( area.saveState(), open( self.layoutsDir+layoutName+self.layoutsExt, "wb" ) )
+    def loadLayout(self):
+        layouts = glob(self.layoutsDir+'*'+self.layoutsExt)
+        if len(layouts) == 0:
+            _ = QtGui.QMessageBox.warning(self,'Load layout','No saved layouts found.')
+        else:
+            layouts = [layout[len(self.layoutsDir):-1*len(self.layoutsExt)] for layout in layouts]
+            layout, ok = QtGui.QInputDialog().getItem(self,'Load layout','Select layout: ',layouts)      
+            if ok:
+                state = pickle.load(open(self.layoutsDir+layout+self.layoutsExt, "rb" ) )
+                area.restoreState(state)
+    
+    #Function to open SPE files to operate on.
+    def openSPE(self):
+        '''
+        Select a new target SPE file to work on.
+        
+        
+        Open dialog box, select file, verify that it is a SPE file.
+        '''
+        fname = QtGui.QFileDialog.getOpenFileName(self, 'Open SPE file', 
+                '/home',filter='Data (*.spe)')
+        print fname
+        if fname[-4:]=='.spe':
+            log("Opening file "+fname,1)
+            self.spefile = fname
+            stagechange(1) #This needs to trigger a major chain of events
+        else: log("Invalid file type (must be SPE).",3)
+        
+    #Confirm Quit
+    def closeEvent(self, event):
+        
+        reply = QtGui.QMessageBox.question(self, 'Message',
+            "Really quit?", QtGui.QMessageBox.Yes | 
+            QtGui.QMessageBox.No, QtGui.QMessageBox.No)
+
+        if reply == QtGui.QMessageBox.Yes:
+            event.accept()
+        else:
+            event.ignore()
+
+# Make the App have a window and dock area.         
+app = QtGui.QApplication([])
+win = WithMenu()
+area = DockArea()
+win.setCentralWidget(area)
+win.resize(1200,600)
+win.setWindowTitle('ProEM Online Data Analysis')
+
+
+
+
+
+
+
+
+#### Define all variables that everything needs access to:
 
 
 #Keep track of the current frame:
@@ -84,100 +195,6 @@ def displayframe(displayimg,autoscale=False):
 
 #Set up a list to keep track of star positions
 starpos=[]
-
-#Open File functionality
-class WithMenu(QtGui.QMainWindow):
-    
-    def __init__(self):
-        super(WithMenu, self).__init__()
-        
-        self.initUI()
-        
-    def initUI(self):      
-
-        #SETUP THE MENUBAR!
-        #Note: Exit is protected on Mac.  This may work on Windows.
-        exitAction = QtGui.QAction('Exit', self)        
-        exitAction.setShortcut('Ctrl+Q')
-        exitAction.setStatusTip('Exit application')
-        exitAction.triggered.connect(QtGui.qApp.quit)
-
-        openFile = QtGui.QAction('&Open SPE', self)
-        openFile.setShortcut('Ctrl+O')
-        openFile.setStatusTip('Open SPE File')
-        openFile.triggered.connect(self.openSPE)
-        
-        saveLayout = QtGui.QAction('Save layout', self)
-        saveLayout.setStatusTip('Save the current dock layout')
-        saveLayout.triggered.connect(self.saveLayout)
-        
-        loadLayout = QtGui.QAction('Load layout', self)
-        loadLayout.setStatusTip('Load a saved dock layout')
-        loadLayout.triggered.connect(self.loadLayout)
-        
-        menubar = self.menuBar()
-        fileMenu = menubar.addMenu('File')
-        fileMenu.addAction(openFile)
-        fileMenu.addAction(saveLayout)
-        fileMenu.addAction(loadLayout)
-        fileMenu.addAction(exitAction)
-
-    layoutsDir = './layouts/'
-    layoutsExt = '.p'
-    def saveLayout(self):
-        layoutName, ok = QtGui.QInputDialog.getText(self, 'Save layout', 
-            'Enter name for this layout:')
-        if ok:
-            pickle.dump( area.saveState(), open( self.layoutsDir+layoutName+self.layoutsExt, "wb" ) )
-    
-    def loadLayout(self):
-        layouts = glob(self.layoutsDir+'*'+self.layoutsExt)
-        if len(layouts) == 0:
-            _ = QtGui.QMessageBox.warning(self,'Load layout','No saved layouts found.')
-        else:
-            layouts = [layout[len(self.layoutsDir):-1*len(self.layoutsExt)] for layout in layouts]
-            layout, ok = QtGui.QInputDialog().getItem(self,'Load layout','Select layout: ',layouts)      
-            if ok:
-                state = pickle.load(open(self.layoutsDir+layout+self.layoutsExt, "rb" ) )
-                area.restoreState(state)
-    
-    def openSPE(self):
-        '''
-        Select a new target SPE file to work on.
-        
-        
-        Open dialog box, select file, verify that it is a SPE file.
-        '''
-        fname = QtGui.QFileDialog.getOpenFileName(self, 'Open SPE file', 
-                '/home',filter='Data (*.spe)')
-        print fname
-        if fname[-4:]=='.spe':
-            log("Opening file "+fname,1)
-            self.spefile = fname
-            stagechange(1)
-        else: log("Invalid file type (must be SPE).",3)
-        
-        #img = fits.getdata(str(fname))[0]
-        #w5.setImage(img)
-
-    def closeEvent(self, event):
-        
-        reply = QtGui.QMessageBox.question(self, 'Message',
-            "Really quit?", QtGui.QMessageBox.Yes | 
-            QtGui.QMessageBox.No, QtGui.QMessageBox.No)
-
-        if reply == QtGui.QMessageBox.Yes:
-            event.accept()
-        else:
-            event.ignore()
-
-         
-app = QtGui.QApplication([])
-win = WithMenu()
-area = DockArea()
-win.setCentralWidget(area)
-win.resize(1200,600)
-win.setWindowTitle('ProEM Online Data Analysis Demo')
 
 ## Create docks, place them into the window one at a time.
 ## Note that size arguments are only a suggestion; docks will still have to
