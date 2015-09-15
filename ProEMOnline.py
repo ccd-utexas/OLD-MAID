@@ -152,6 +152,24 @@ win.setWindowTitle('ProEM Online Data Analysis')
 
 
 
+## Set up each of the docks (to hold the widgets)
+d1 = Dock("Dock1 - Observing Log", size=(400,300))
+d2 = Dock("Dock2 - Process Log", size=(400,300))
+d3 = Dock("Dock3 - Fourier Transform", size=(800,400))
+d4 = Dock("Dock4 (tabbed) - Smoothed", size=(800,200))
+d5 = Dock("Dock5 - Image", size=(400,200))
+d6 = Dock("Dock6 (tabbed) - Light Curve", size=(800,200))
+d7 = Dock("Dock7 (tabbed) - Comparison Counts", size=(800,200))
+d8 = Dock("Dock8 (tabbed) - Seeing", size=(800,200))
+
+area.addDock(d4, 'left')    
+area.addDock(d1, 'right',d4)    
+area.addDock(d6, 'above', d4)
+area.addDock(d8, 'bottom', d4)  
+area.addDock(d7, 'above', d8)  
+area.addDock(d5, 'bottom',d1)  
+area.addDock(d2, 'bottom', d5)    
+area.addDock(d3, 'bottom', d7) 
 
 
 
@@ -198,26 +216,6 @@ def displayframe(displayimg,autoscale=False):
 
 #Set up a list to keep track of star positions
 starpos=[]
-
-## Create docks, place them into the window one at a time.
-## Note that size arguments are only a suggestion; docks will still have to
-## fill the entire dock area and obey the limits of their internal widgets.
-d1 = Dock("Dock1 - Observing Log", size=(500,300))
-d2 = Dock("Dock2 - Process Log", size=(500,300))
-d3 = Dock("Dock3 - Fourier Transform", size=(500,400))
-d4 = Dock("Dock4 (tabbed) - Smoothed", size=(500,200))
-d5 = Dock("Dock5 - Image", size=(500,200))
-d6 = Dock("Dock6 (tabbed) - Light Curve", size=(500,200))
-d7 = Dock("Dock7 (tabbed) - Comparison Counts", size=(500,200))
-d8 = Dock("Dock8 (tabbed) - Seeing", size=(500,200))
-area.addDock(d1, 'right')      ## place d1 at right edge of dock area (it will fill the whole space since there are no other docks yet)
-area.addDock(d4, 'left',d1)     ## place d4 to the left of d1
-area.addDock(d6, 'above', d4)  ## place d6 above d4
-area.addDock(d5, 'bottom',d1)  ## place d5 below d1
-area.addDock(d7, 'left', d5)   ## place d7 to the left of d5
-area.addDock(d8, 'above', d7)  # place d8 above d7
-area.addDock(d2, 'bottom', d5)     ## place d2 below d5
-area.addDock(d3, 'left', d2) ## place d3 to the left of d2
 
 
 
