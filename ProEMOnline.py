@@ -162,6 +162,7 @@ d6 = Dock("Dock6 (tabbed) - Light Curve", size=(800,200))
 d7 = Dock("Dock7 (tabbed) - Comparison Counts", size=(800,200))
 d8 = Dock("Dock8 (tabbed) - Seeing", size=(800,200))
 
+#Define initial layout
 area.addDock(d4, 'left')    
 area.addDock(d1, 'right',d4)    
 area.addDock(d6, 'above', d4)
@@ -170,6 +171,140 @@ area.addDock(d7, 'above', d8)
 area.addDock(d5, 'bottom',d1)  
 area.addDock(d2, 'bottom', d5)    
 area.addDock(d3, 'bottom', d7) 
+
+#Define and place widgets into the docks
+
+## First dock holds the Observing Log
+#Type of widget: Form
+w1 = pg.LayoutWidget()
+#Name the form elements
+observer = QtGui.QLabel('Observer')
+target = QtGui.QLabel('Target')
+filt = QtGui.QLabel('Filter')
+log = QtGui.QLabel('Log')
+#Define the types of fields
+observerEdit = QtGui.QLineEdit()
+targetEdit = QtGui.QLineEdit()
+filtEdit = QtGui.QComboBox()
+filtEdit.addItems(["BG40","u'","g'","r'","i'","z'","Other"])
+logEdit = QtGui.QTextEdit()
+#Put the fields in the form
+w1.addWidget(observer, 1, 0)
+w1.addWidget(observerEdit, 1, 1)
+w1.addWidget(target, 2, 0)
+w1.addWidget(targetEdit, 2, 1)        
+w1.addWidget(filt, 3, 0)
+w1.addWidget(filtEdit, 3, 1)
+w1.addWidget(log, 4, 0)
+w1.addWidget(logEdit, 4, 1, 6, 1)
+#Put the widget in the dock
+d1.addWidget(w1)
+
+
+## Process Log
+# Records activity.
+w2 = pg.LayoutWidget()
+processLog = QtGui.QTextEdit()
+processLog.setReadOnly(True)
+w2.addWidget(processLog, 0, 0, 6, 1)
+d2.addWidget(w2)
+# This widget need special functions to get messages:
+def log(text,level=0):
+    '''log messages to the process log and log file
+    
+    text is the message for the log
+    level indicated how important it is:
+    level=0: Routine background process: gray text;
+    level=1: User influenced action: black text;
+    level=2: Major change: bold black;
+    level=3: Warning message: bold red; 
+    '''
+    colors = ['darkgray','black','black','red']
+    prefix = ['','','','WARNING: ']
+    fontweight = [50,50,75,75]
+    if level in range(4):
+        processLog.setTextColor(QtGui.QColor(colors[level]))
+        processLog.setFontWeight(fontweight[level])
+        processLog.append(prefix[level]+text)
+    else: log('Level assigned to message "'+text+'" out of range.',level=3)
+
+
+## Light Curve
+# It's a plot
+w6 = pg.PlotWidget(title="Dock 6 plot",labels={'left': 'rel. flux', 'bottom': 'frame #'})
+# Set up plot components
+# Raw points
+s1 = pg.ScatterPlotItem(brush=(255,0,0), pen='w',symbol='o')
+# Bad (ignored) points
+s2 = pg.ScatterPlotItem(brush=(255,0,0), pen='b',symbol='o')
+# Connecting lines
+l1 = pg.PlotCurveItem()
+#Add components to plot widget.
+w6.addItem(s1)
+w6.addItem(s2)
+w6.addItem(l1)
+#Add widget to dock
+d6.addWidget(w6)
+
+
+## Smoothed Light Curve
+w4 = pg.PlotWidget(title="Dock 4 plot",labels={'left': 'smoothed flux', 'bottom': 'frame #'})
+ss1 = pg.ScatterPlotItem(brush=(255,0,0), pen='w',symbol='o')
+sl1 = pg.PlotCurveItem()
+w4.addItem(ss1)
+w4.addItem(sl1)
+d4.addWidget(w4)
+
+
+## Comp Star Counts
+w7 = pg.PlotWidget(title="Dock 7 plot")
+w7.plot(np.random.normal(size=100))
+d7.addWidget(w7)
+
+
+## Sky/Seeing
+w8 = pg.PlotWidget(title="Dock 8 plot")
+w8.plot(np.random.normal(size=100))
+d8.addWidget(w8)
+
+
+## Fourier Transform
+w3 = pg.PlotWidget(title="Fourier Transform",labels={'left': 'amplitude', 'bottom': 'freq (per frame)'})
+ft = w3.plot(pen='y')
+d3.addWidget(w3)
+
+
+## Image
+w5 = pg.ImageView()
+w5.ui.roiBtn.hide()
+#w5.ui.normBtn.hide() #Causing trouble on windows
+displayframe(displayimg,autoscale=True)
+w5.getImageItem().mouseClickEvent = click #Function defined below
+d5.addWidget(w5)
+
+
+## Show the program!
+win.show()
+
+
+
+
+#### STAGE 1 ####
+
+
+
+
+
+
+#define smoothing function For smoothed light curve
+winsize = 5.#win size in frames
+def smooth(flux, window_size):
+    #make sure flux is longer than window_size
+    if len(flux) < window_size:
+        return flux
+    else:
+        window = np.ones(int(window_size))/float(window_size)
+        return np.convolve(flux, window, 'same')
 
 
 
@@ -219,36 +354,6 @@ starpos=[]
 
 
 
-## Add widgets into each dock
-
-
-
-## First dock holds the Observing Log
-w1 = pg.LayoutWidget()
-observer = QtGui.QLabel('Observer')
-target = QtGui.QLabel('Target')
-filt = QtGui.QLabel('Filter')
-log = QtGui.QLabel('Log')
-
-observerEdit = QtGui.QLineEdit()
-targetEdit = QtGui.QLineEdit()
-filtEdit = QtGui.QComboBox()
-filtEdit.addItems(["BG40","u'","g'","r'","i'","z'","Other"])
-logEdit = QtGui.QTextEdit()
-
-w1.addWidget(observer, 1, 0)
-w1.addWidget(observerEdit, 1, 1)
-
-w1.addWidget(target, 2, 0)
-w1.addWidget(targetEdit, 2, 1)
-        
-w1.addWidget(filt, 3, 0)
-w1.addWidget(filtEdit, 3, 1)
-
-w1.addWidget(log, 4, 0)
-w1.addWidget(logEdit, 4, 1, 6, 1)
-
-d1.addWidget(w1)
 
 
 
@@ -257,13 +362,6 @@ d1.addWidget(w1)
 
 
 
-## Process Log
-w2 = pg.LayoutWidget()
-processLog = QtGui.QTextEdit()
-processLog.setReadOnly(True)
-#processLog.setTextBackgroundColor(QtGui.QColor("black"))
-w2.addWidget(processLog, 0, 0, 6, 1)
-d2.addWidget(w2)
 
 
 
@@ -271,40 +369,9 @@ d2.addWidget(w2)
 
 
 
-## Fourier Transform - Just shows random updating noise for now
-w3 = pg.PlotWidget(title="Fourier Transform",labels={'left': 'amplitude', 'bottom': 'freq (per frame)'})
-ft = w3.plot(pen='y')
-d3.addWidget(w3)
 
 
 
-
-## Smoothed Light Curve
-#define smoothing function
-winsize = 5.#win size in frames
-def smooth(flux, window_size):
-    #make sure flux is longer than window_size
-    if len(flux) < window_size:
-        return flux
-    else:
-        window = np.ones(int(window_size))/float(window_size)
-        return np.convolve(flux, window, 'same')
-w4 = pg.PlotWidget(title="Dock 4 plot",labels={'left': 'smoothed flux', 'bottom': 'frame #'})
-ss1 = pg.ScatterPlotItem(brush=(255,0,0), pen='w',symbol='o')
-sl1 = pg.PlotCurveItem()
-w4.addItem(ss1)
-w4.addItem(sl1)
-d4.addWidget(w4)
-
-
-
-
-
-## Image
-w5 = pg.ImageView()
-w5.ui.roiBtn.hide()
-#w5.ui.normBtn.hide() #Causing trouble on windows
-displayframe(displayimg,autoscale=True)
 
 def click(event):
     event.accept()
@@ -315,47 +382,12 @@ def click(event):
     #img[pos.x(),pos.y()]=[255,255-img[pos.x(),pos.y(),1],255-img[pos.x(),pos.y(),1]]
     #w5.setImage(img,autoRange=False)
     log("Star selected at "+str( (int(pos.x()),int(pos.y())) ),level=1)
-w5.getImageItem().mouseClickEvent = click
-d5.addWidget(w5)
-
-
-def log(text,level=0):
-    '''log messages to the process log and log file
-    
-    text is the message for the log
-    level indicated how important it is:
-    level=0: Routine background process: gray text;
-    level=1: User influenced action: black text;
-    level=2: Major change: bold black;
-    level=3: Warning message: bold red; 
-    '''
-    colors = ['darkgray','black','black','red']
-    prefix = ['','','','WARNING: ']
-    fontweight = [50,50,75,75]
-    if level in range(4):
-        processLog.setTextColor(QtGui.QColor(colors[level]))
-        processLog.setFontWeight(fontweight[level])
-        processLog.append(prefix[level]+text)
-    else: log('Level assigned to message "'+text+'" out of range.',level=3)
-
-## Light Curve
-w6 = pg.PlotWidget(title="Dock 6 plot",labels={'left': 'rel. flux', 'bottom': 'frame #'})
 
 ##We need to keep track of two things:
 # - The time series data
 # - The indices of selected points
 data = np.empty(100)
 bad = []
-
-#Set up plot components
-s1 = pg.ScatterPlotItem(brush=(255,0,0), pen='w',symbol='o')
-s2 = pg.ScatterPlotItem(brush=(255,0,0), pen='b',symbol='o') #bad points
-l1 = pg.PlotCurveItem()
-
-#Add components to plot object.
-w6.addItem(s1)
-w6.addItem(s2)
-w6.addItem(l1)
 
 
 
@@ -431,23 +463,7 @@ def clicked(plot, points):
 s1.sigClicked.connect(clicked)
 s2.sigClicked.connect(clicked)
 
-d6.addWidget(w6)
 
-
-
-
-
-## Smoothed Light Curve
-w7 = pg.PlotWidget(title="Dock 7 plot")
-w7.plot(np.random.normal(size=100))
-d7.addWidget(w7)
-
-## Smoothed Light Curve
-w8 = pg.PlotWidget(title="Dock 8 plot")
-w8.plot(np.random.normal(size=100))
-d8.addWidget(w8)
-
-win.show()
 
 
 
