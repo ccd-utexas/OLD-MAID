@@ -296,6 +296,9 @@ win.show()
 
 
 
+#### STAGE 2 ####
+
+
 #define smoothing function For smoothed light curve
 winsize = 5.#win size in frames
 def smooth(flux, window_size):
