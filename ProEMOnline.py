@@ -84,11 +84,15 @@ class WithMenu(QtGui.QMainWindow):
         
         #Menubar
         menubar = self.menuBar()
+        #File Menu
         fileMenu = menubar.addMenu('File')
         fileMenu.addAction(openFile)
-        fileMenu.addAction(saveLayout)
-        fileMenu.addAction(loadLayout)
         fileMenu.addAction(exitAction)
+        #Layout Menu
+        layoutMenu = menubar.addMenu('Layout')
+        layoutMenu.addAction(saveLayout)
+        layoutMenu.addAction(loadLayout)
+        
 
     #Functions to save and load layouts
     layoutsDir = './layouts/'
@@ -129,7 +133,6 @@ class WithMenu(QtGui.QMainWindow):
         
     #Confirm Quit
     def closeEvent(self, event):
-        
         reply = QtGui.QMessageBox.question(self, 'Message',
             "Really quit?", QtGui.QMessageBox.Yes | 
             QtGui.QMessageBox.No, QtGui.QMessageBox.No)
