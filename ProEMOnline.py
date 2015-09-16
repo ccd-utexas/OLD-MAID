@@ -26,6 +26,10 @@ from astroML.fourier import FT_continuous
 from scipy.interpolate import interp1d
 
 from pyqtgraph.dockarea import *
+# Local modules.
+import read_spe
+
+
 
 #### BEGIN PROGRAM ####
 
@@ -119,16 +123,16 @@ class WithMenu(QtGui.QMainWindow):
         '''
         Select a new target SPE file to work on.
         
-        
         Open dialog box, select file, verify that it is a SPE file.
         '''
         fname = QtGui.QFileDialog.getOpenFileName(self, 'Open SPE file', 
-                '/home',filter='Data (*.spe)')
+                '/Users/keatonb/',filter='Data (*.spe)')
         print fname
         if fname[-4:]=='.spe':
             log("Opening file "+fname,1)
             self.spefile = fname
-            stagechange(1) #This needs to trigger a major chain of events
+            #This needs to trigger a major chain of events
+            stage1(str(fname))
         else: log("Invalid file type (must be SPE).",3)
         
     #Confirm Quit
@@ -299,7 +303,121 @@ win.show()
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 #### STAGE 1 ####
+
+# Stage 1 starts when a SPE file is loaded.
+# It's the "getting everything set up" stage
+# Since the SPE file is loaded by the menu action, this will be one big
+# function that is called on the new image.
+
+#First define all the variables everything will need access to:
+#These will be called into action as global variables.
+
+#SPE Filename
+spefile = ''
+#SPE Data
+spe=[]
+#Number of last reduced frame
+framenum=-1 #none yet
+#Image data:
+img=np.zeros(0)  
+#And another version to look nice
+displayimg=np.zeros(0)  
+#Elapsed timestamps
+times=0
+
+def stage1(fname):
+    #Load SPE File
+    
+    #Access needed global vars
+    global spefile,framenum,img,times
+    #Announce Stage 1    
+    stagechange(1)
+    #Record SPE filename this once
+    spefile = fname
+    #Read in SPE data
+    readspe()
+    numframes=spe.get_num_frames()
+    #now display the first frame
+    framenum=0
+    (thisframe,thistime) = spe.get_frame(0)
+    img = [np.transpose(thisframe)]
+    times = [thistime]
+    for i in range(1,numframes):
+        (thisframe,thistime) = spe.get_frame(i)
+        framenum=i
+        img.append(np.transpose(thisframe))
+        times.append(thistime)
+    img=np.array(img)
+        
+    makeDisplayImage()
+    displayFrame(autoscale=True)
+    spe.close()
+
+#Helper functions, useful here and elsewhere
+def readspe():
+    global spe
+    #Read in the spe file and print details to the log
+    spe = read_spe.File(spefile)
+    log(str(spe.get_num_frames()) + ' frames read in.')
+    if hasattr(spe, 'footer_metadata'): log('SPE file has footer.')
+
+def makeDisplayImage():
+    #Make a copy of the data without outliers
+    global img,displayimg
+    displayimg = np.copy(img)
+    
+    #Insert one 0-value pixel to control minimum
+    for i in range(displayimg.shape[0]):
+        displayimg[i,0,0]=0
+        imgvals = displayimg[i].flatten()
+        #replace everything above 99%tile
+        #don't do calulcations on this adjusted array!!!
+        img99percentile = np.percentile(imgvals,99)
+        displayimg[i][displayimg[i] > img99percentile] = img99percentile
+        #make color
+    #self.displayimg=np.rollaxis(np.array(displayimg),0,1)
+    displayimg=np.array(displayimg)
+ 
+#show the image to the widget
+def displayFrame(autoscale=False):
+    """Display an RBG image
+    
+    Autoscale optional.
+    Return nothing.
+    """
+    print "checkpoint"
+    if autoscale:
+        thisimg=displayimg[framenum]
+        lowlevel=np.min(thisimg[thisimg > 0])
+        highlevel=np.max(thisimg)-1
+        w5.setImage(displayimg,autoRange=True,levels=[lowlevel,highlevel])
+    else:
+        w5.setImage(displayimg,autoRange=False,autoLevels=False)
+        
+
+
+
+
+
+
+
+
+
 
 
 
@@ -347,8 +465,7 @@ def newframe(fitsfile):
 fitsfile = 'ProEMExample.fits' #initial file
 img,displayimg = newframe(fitsfile)
 
-#In reality, we want to operate on an SPE file:
-spefile = ''
+
 
 #Use a function to display a new image
 #Autoscaling levels optional
