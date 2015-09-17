@@ -24,7 +24,8 @@ from glob import glob
 import astropy.io.fits as fits
 from astroML.fourier import FT_continuous
 from scipy.interpolate import interp1d
-
+from astropy.stats import biweight_location, biweight_midvariance
+from photutils import daofind
 from pyqtgraph.dockarea import *
 # Local modules.
 import read_spe
@@ -50,7 +51,7 @@ def stagechange(num):
 
 
 
-#### STAGE 1 ####
+#### STAGE 0 ####
 #Set up the general GUI aspects
 
 #Set up main window with menu items
@@ -282,17 +283,27 @@ d3.addWidget(w3)
 w5 = pg.ImageView()
 w5.ui.roiBtn.hide()
 #w5.ui.normBtn.hide() #Causing trouble on windows
-#displayframe(displayimg,autoscale=True) #No image yet
-#Define function for selecting stars.
-def click(event):
+#Define function for selecting stars. (must be defined before linking the click action)
+def click(event):#Linked to image click event
     event.accept()
     pos = event.pos()
+    #x and y are swapped in the GUI!
+    log("Clicked at "+str( (pos.x(),pos.y()) ),level=2)
+    x=pos.x()
+    y=pos.y()
     #check if we're marking or unmarking a star
     #if pos.
-    starpos.append([pos.x(),pos.y()])
+    #improve coordinates
+    dx,dy = improvecoords(x,y)
+    print "Clicked at "+str( (pos.x(),pos.y()) )
+    print 'deltax,y = ' ,dx,dy
+    #round originals so original position *within* pixel doesn't affect answer
+    newcoords=[np.floor(x)+.5+dx,np.floor(y)+.5+dy]
+    starpos.append(newcoords)
+    print 'final coords: ',newcoords
     #img[pos.x(),pos.y()]=[255,255-img[pos.x(),pos.y(),1],255-img[pos.x(),pos.y(),1]]
     #w5.setImage(img,autoRange=False)
-    log("Star selected at "+str( (int(pos.x()),int(pos.y())) ),level=1)
+    log("Star selected at "+str( newcoords ),level=1)
 w5.getImageItem().mouseClickEvent = click #Function defined below
 d5.addWidget(w5)
 
@@ -339,12 +350,20 @@ img=np.zeros(0)
 displayimg=np.zeros(0)  
 #Elapsed timestamps
 times=0
+#Search radius (box for now), improve later
+pixdist=20 #(super)pixels
+#List of median background counts:
+backmed=[]
+#List of background variances
+backvar=[]
+#Binning
+binning=4
 
 def stage1(fname):
     #Load SPE File
     
     #Access needed global vars
-    global spefile,framenum,img,times
+    global spefile,framenum,img,times,backmed,backvar,binning
     #Announce Stage 1    
     stagechange(1)
     #Record SPE filename this once
@@ -355,15 +374,24 @@ def stage1(fname):
     #now display the first frame
     framenum=0
     (thisframe,thistime) = spe.get_frame(0)
+    binning = 1024/thisframe.shape[0]
     img = [np.transpose(thisframe)]
     times = [thistime]
+    backgroundmed,backgroundvar=charbackground(i=framenum)
+    backmed.append(backgroundmed)
+    backvar.append(backgroundvar)
     for i in range(1,numframes):
+        log('frame '+str(i))
         (thisframe,thistime) = spe.get_frame(i)
         framenum=i
+        #Append all the image info (that doesn't change based on user input)
+        backmed.append(backgroundmed)
+        backvar.append(backgroundvar)
         img.append(np.transpose(thisframe))
+        backgroundmed,backgroundvar=charbackground(i=framenum)#Must do after appending image.
         times.append(thistime)
     img=np.array(img)
-        
+    
     makeDisplayImage()
     displayFrame(autoscale=True)
     spe.close()
@@ -376,6 +404,18 @@ def readspe():
     log(str(spe.get_num_frames()) + ' frames read in.')
     if hasattr(spe, 'footer_metadata'): log('SPE file has footer.')
 
+#Function to characterize the background to find stellar centroids accurately
+#This should be done for each frame as it's read in
+def charbackground(i=framenum):
+    """Characterize the image background, median and variance
+
+    i is frame number    
+    """
+    backgroundmed = biweight_location(img[i])
+    backgroundvar = biweight_midvariance(img[i])
+    return backgroundmed, backgroundvar        
+
+#Make pretty copy of images for display        
 def makeDisplayImage():
     #Make a copy of the data without outliers
     global img,displayimg
@@ -394,28 +434,65 @@ def makeDisplayImage():
     displayimg=np.array(displayimg)
  
 #show the image to the widget
-def displayFrame(autoscale=False):
+def displayFrame(i=framenum,autoscale=False):
     """Display an RBG image
     
+    i is index to display
     Autoscale optional.
     Return nothing.
     """
-    print "checkpoint"
+    #Make sure i is in range
+    if i < 0: i=0
+    if i > framenum: i=framenum
     if autoscale:
-        thisimg=displayimg[framenum]
+        thisimg=displayimg[i]
         lowlevel=np.min(thisimg[thisimg > 0])
         highlevel=np.max(thisimg)-1
         w5.setImage(displayimg,autoRange=True,levels=[lowlevel,highlevel])
     else:
         w5.setImage(displayimg,autoRange=False,autoLevels=False)
-        
 
+def improvecoords(x,y,i=w5.currentIndex,pixdist=20,fwhm=8.0,sigma=3.):
+    """Improve stellar centroid position from guess value. (one at a time)
 
+    #return the adjustment than needs to be made in x and y directions
+    #NOTE: This may have trouble near edges.
+    """
+    print x,y
+    #x=(1024/binning)-x
+    #y=(1024/binning)-y
+    #Keep track of motion
+    delta = np.zeros(2)
+    #Get image subregion around guess position
+    subdata=img[i,x-pixdist:x+pixdist,y-pixdist:y+pixdist]
+    print subdata.shape
+    sources = daofind(subdata - backmed[i], fwhm, threshold=sigma*backvar[i],
+                      sharplo=0.1, sharphi=1.5, roundlo=-2.0, roundhi=2.0)
+    #From what I can tell, daofind returns x and y swapped, so fix it
+    returnedx = sources['ycen']
+    returnedy = sources['xcen']
 
+    #check that unique source found
+    if len(sources) == 0:
+        log("WARNING: no sources found in searched region near "+str((x,y))+".")
+        #delta = [0,0] in this case
+    else:
+        if len(sources) > 1:
+            log("WARNING: non-unique solution found for target near "+str((x,y))+". "+str(len(sources))+" signals in window.  Using brightest.")
+        #Take brightest star found
+        strongsignal= np.argmax(sources['peak'])
+        delta[0]+=returnedx[strongsignal]-pixdist
+        delta[1]+=returnedy[strongsignal]-pixdist
 
+    #handle stars that were not found #Move this outside this function
+    """
+    if [0,0] in delta and follow:
+        meandeltax=np.mean(delta[np.where(delta[:,0] != 0),0])
+        meandeltay=np.mean(delta[np.where(delta[:,1] != 0),1])
+        delta[np.where(delta[:,0] == 0)] += [meandeltax,meandeltay]
+    """
 
-
-
+    return delta[0],delta[1]
 
 
 
