@@ -288,16 +288,22 @@ def click(event):#Linked to image click event
     event.accept()
     pos = event.pos()
     #x and y are swapped in the GUI!
-    x=pos.y()
-    y=pos.x()
+    log("Clicked at "+str( (pos.x(),pos.y()) ),level=2)
+    x=pos.x()
+    y=pos.y()
     #check if we're marking or unmarking a star
     #if pos.
     #improve coordinates
     dx,dy = improvecoords(x,y)
-    starpos.append([x+dx,y+dx])
+    print "Clicked at "+str( (pos.x(),pos.y()) )
+    print 'deltax,y = ' ,dx,dy
+    #round originals so original position *within* pixel doesn't affect answer
+    newcoords=[np.floor(x)+.5+dx,np.floor(y)+.5+dy]
+    starpos.append(newcoords)
+    print 'final coords: ',newcoords
     #img[pos.x(),pos.y()]=[255,255-img[pos.x(),pos.y(),1],255-img[pos.x(),pos.y(),1]]
     #w5.setImage(img,autoRange=False)
-    log("Star selected at "+str( (x+dx,y+dx) ),level=1)
+    log("Star selected at "+str( newcoords ),level=1)
 w5.getImageItem().mouseClickEvent = click #Function defined below
 d5.addWidget(w5)
 
@@ -458,11 +464,13 @@ def improvecoords(x,y,i=w5.currentIndex,pixdist=20,fwhm=8.0,sigma=3.):
     #Keep track of motion
     delta = np.zeros(2)
     #Get image subregion around guess position
-    subdata=img[i,y-pixdist:y+pixdist,x-pixdist:x+pixdist]
+    subdata=img[i,x-pixdist:x+pixdist,y-pixdist:y+pixdist]
     print subdata.shape
     sources = daofind(subdata - backmed[i], fwhm, threshold=sigma*backvar[i],
                       sharplo=0.1, sharphi=1.5, roundlo=-2.0, roundhi=2.0)
-    print sources
+    #From what I can tell, daofind returns x and y swapped, so fix it
+    returnedx = sources['ycen']
+    returnedy = sources['xcen']
 
     #check that unique source found
     if len(sources) == 0:
@@ -473,8 +481,8 @@ def improvecoords(x,y,i=w5.currentIndex,pixdist=20,fwhm=8.0,sigma=3.):
             log("WARNING: non-unique solution found for target near "+str((x,y))+". "+str(len(sources))+" signals in window.  Using brightest.")
         #Take brightest star found
         strongsignal= np.argmax(sources['peak'])
-        delta[0]+=sources['xcen'][strongsignal]-pixdist
-        delta[1]+=sources['ycen'][strongsignal]-pixdist
+        delta[0]+=returnedx[strongsignal]-pixdist
+        delta[1]+=returnedy[strongsignal]-pixdist
 
     #handle stars that were not found #Move this outside this function
     """
