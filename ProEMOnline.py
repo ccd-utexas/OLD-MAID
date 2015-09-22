@@ -77,6 +77,12 @@ class WithMenu(QtGui.QMainWindow):
         openFile.setStatusTip('Open SPE File')
         openFile.triggered.connect(self.openSPE)
         
+        #Run Photometry
+        runPhot = QtGui.QAction('&Run Photometry', self)
+        runPhot.setShortcut('Ctrl+R')
+        runPhot.setStatusTip('Run Aperture Photometry on Frames')
+        runPhot.triggered.connect(self.run)
+        
         #Save Layout
         saveLayout = QtGui.QAction('Save layout', self)
         saveLayout.setStatusTip('Save the current dock layout')
@@ -92,6 +98,7 @@ class WithMenu(QtGui.QMainWindow):
         #File Menu
         fileMenu = menubar.addMenu('File')
         fileMenu.addAction(openFile)
+        fileMenu.addAction(runPhot)
         fileMenu.addAction(exitAction)
         #Layout Menu
         layoutMenu = menubar.addMenu('Layout')
@@ -135,6 +142,17 @@ class WithMenu(QtGui.QMainWindow):
             #This needs to trigger a major chain of events
             stage1(str(fname))
         else: log("Invalid file type (must be SPE).",3)
+        
+    #Run Photometry
+    def run(self):
+        #Do aperture photometry on selected stars
+        global numstars, selectingstars
+        if numstars == 0:
+            log("No stars selected.  Select stars before running.",3)
+        else:
+            selectingstars=False
+            
+        
         
     #Confirm Quit
     def closeEvent(self, event):
@@ -285,12 +303,15 @@ w5.ui.roiBtn.hide()
 #w5.ui.normBtn.hide() #Causing trouble on windows
 #Define function for selecting stars. (must be defined before linking the click action)
 def click(event):#Linked to image click event
+    if event.button() == 1: print "LEFT!"
+    if event.button() == 2: print "RIGHT!"
     event.accept()
     pos = event.pos()
     #x and y are swapped in the GUI!
-    log("Clicked at "+str( (pos.x(),pos.y()) ),level=2)
     x=pos.x()
     y=pos.y()
+    log("Clicked at "+str((x,y)),level=2)
+
     #check if we're marking or unmarking a star
     #if pos.
     #improve coordinates
@@ -342,16 +363,22 @@ win.show()
 spefile = ''
 #SPE Data
 spe=[]
-#Number of last reduced frame
+#Number of last *reduced* (photometry measures) frame
 framenum=-1 #none yet
+#Flag to indicate whether we are currently selecting stars in the frame:
+selectingstars = False
+#Number of stars to do photometry on (target first)
+numstars = 0 #0 means we haven't selected stars yet.
+#Star coords
+stars = [] #list of list of tuple coords
 #Image data:
-img=np.zeros(0)  
+img=[]
 #And another version to look nice
-displayimg=np.zeros(0)  
+displayimg=[]
 #Elapsed timestamps
-times=0
+times=[]
 #Search radius (box for now), improve later
-pixdist=20 #(super)pixels
+pixdist=10 #(super)pixels
 #List of median background counts:
 backmed=[]
 #List of background variances
@@ -363,7 +390,7 @@ def stage1(fname):
     #Load SPE File
     
     #Access needed global vars
-    global spefile,framenum,img,times,backmed,backvar,binning
+    global spefile
     #Announce Stage 1    
     stagechange(1)
     #Record SPE filename this once
@@ -372,37 +399,47 @@ def stage1(fname):
     readspe()
     numframes=spe.get_num_frames()
     #now display the first frame
-    framenum=0
-    (thisframe,thistime) = spe.get_frame(0)
-    binning = 1024/thisframe.shape[0]
-    img = [np.transpose(thisframe)]
-    times = [thistime]
-    backgroundmed,backgroundvar=charbackground(i=framenum)
-    backmed.append(backgroundmed)
-    backvar.append(backgroundvar)
+    processframe()
+    '''
     for i in range(1,numframes):
         log('frame '+str(i))
         (thisframe,thistime) = spe.get_frame(i)
-        framenum=i
+        #framenum=i #nope!
         #Append all the image info (that doesn't change based on user input)
+        img.append(np.transpose(thisframe))
+        backgroundmed,backgroundvar=charbackground(i=i)#Must do after appending image.
         backmed.append(backgroundmed)
         backvar.append(backgroundvar)
-        img.append(np.transpose(thisframe))
-        backgroundmed,backgroundvar=charbackground(i=framenum)#Must do after appending image.
         times.append(thistime)
-    img=np.array(img)
+    '''
+    #img=np.array(img)
     
     makeDisplayImage()
     displayFrame(autoscale=True)
+    print "current frame: ",w5.currentIndex
     spe.close()
 
 #Helper functions, useful here and elsewhere
 def readspe():
-    global spe
+    global spe, binning
     #Read in the spe file and print details to the log
     spe = read_spe.File(spefile)
+    binning = 1024/spe.get_frame(0)[0].shape[0]
     log(str(spe.get_num_frames()) + ' frames read in.')
     if hasattr(spe, 'footer_metadata'): log('SPE file has footer.')
+
+#Define all the stuff that needs to be done to each incoming frame
+def processframe(i=0):
+    global img,times,backmed,backvar
+    print type(img)
+    log('Processing frame '+str(i))
+    (thisframe,thistime) = spe.get_frame(i)
+    img.append(np.transpose(thisframe))
+    times.append(thistime)
+    backgroundmed,backgroundvar=charbackground(i=i)
+    backmed.append(backgroundmed)
+    backvar.append(backgroundvar)
+    
 
 #Function to characterize the background to find stellar centroids accurately
 #This should be done for each frame as it's read in
@@ -451,6 +488,19 @@ def displayFrame(i=framenum,autoscale=False):
         w5.setImage(displayimg,autoRange=True,levels=[lowlevel,highlevel])
     else:
         w5.setImage(displayimg,autoRange=False,autoLevels=False)
+        
+        
+def selectstars():
+    '''Select stars in the current frame.
+    
+    Click to select any number in the first image.
+    Click to select numstars in later images to get following back on track.
+    '''
+    global selectingstars
+    selectingstars = True
+    if numstars == 0:
+        x=1
+    
 
 def improvecoords(x,y,i=w5.currentIndex,pixdist=20,fwhm=8.0,sigma=3.):
     """Improve stellar centroid position from guess value. (one at a time)
@@ -464,7 +514,7 @@ def improvecoords(x,y,i=w5.currentIndex,pixdist=20,fwhm=8.0,sigma=3.):
     #Keep track of motion
     delta = np.zeros(2)
     #Get image subregion around guess position
-    subdata=img[i,x-pixdist:x+pixdist,y-pixdist:y+pixdist]
+    subdata=img[i][x-pixdist:x+pixdist,y-pixdist:y+pixdist]
     print subdata.shape
     sources = daofind(subdata - backmed[i], fwhm, threshold=sigma*backvar[i],
                       sharplo=0.1, sharphi=1.5, roundlo=-2.0, roundhi=2.0)
@@ -501,7 +551,44 @@ def improvecoords(x,y,i=w5.currentIndex,pixdist=20,fwhm=8.0,sigma=3.):
 
 
 
+
+
+
+
+
+
+
+
+
 #### STAGE 2 ####
+
+#Function to loop through and do the photometry
+aperture=4. #for now, for testing.   <---- Update later
+def dophot():
+    '''Do photometric measurements.
+    
+    Stars have been selected.  Run through frames and measure photometry.
+    '''
+    global framenum
+    
+    
+    
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 #define smoothing function For smoothed light curve
@@ -537,11 +624,6 @@ def newframe(fitsfile):
     #make color
     displayimg=np.array([displayimg,displayimg,displayimg]).transpose()
     return img,displayimg
-
-#Start with some initial example file
-fitsfile = 'ProEMExample.fits' #initial file
-img,displayimg = newframe(fitsfile)
-
 
 
 #Use a function to display a new image
