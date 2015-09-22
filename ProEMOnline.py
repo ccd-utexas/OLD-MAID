@@ -516,11 +516,11 @@ def improvecoords(x,y,i=w5.currentIndex,pixdist=20,fwhm=8.0,sigma=3.):
     #Get image subregion around guess position
     subdata=img[i][x-pixdist:x+pixdist,y-pixdist:y+pixdist]
     print subdata.shape
-    sources = daofind(subdata - backmed[i], fwhm, threshold=sigma*backvar[i],
+    sources = daofind(subdata - backmed[i], sigma*backvar[i], fwhm,
                       sharplo=0.1, sharphi=1.5, roundlo=-2.0, roundhi=2.0)
     #From what I can tell, daofind returns x and y swapped, so fix it
-    returnedx = sources['ycen']
-    returnedy = sources['xcen']
+    returnedx = sources['ycentroid']
+    returnedy = sources['xcentroid']
 
     #check that unique source found
     if len(sources) == 0:
