@@ -170,20 +170,20 @@ app = QtGui.QApplication([])
 win = WithMenu()
 area = DockArea()
 win.setCentralWidget(area)
-win.resize(1200,600)
+win.resize(1600,1200)
 win.setWindowTitle('ProEM Online Data Analysis')
 
 
 
 ## Set up each of the docks (to hold the widgets)
-d1 = Dock("Dock1 - Observing Log", size=(400,300))
-d2 = Dock("Dock2 - Process Log", size=(400,300))
-d3 = Dock("Dock3 - Fourier Transform", size=(800,400))
-d4 = Dock("Dock4 (tabbed) - Smoothed", size=(800,200))
-d5 = Dock("Dock5 - Image", size=(400,200))
-d6 = Dock("Dock6 (tabbed) - Light Curve", size=(800,200))
-d7 = Dock("Dock7 (tabbed) - Comparison Counts", size=(800,200))
-d8 = Dock("Dock8 (tabbed) - Seeing", size=(800,200))
+d1 = Dock("Dock1 - Observing Log", size=(500,600))
+d2 = Dock("Dock2 - Process Log", size=(500,600))
+d3 = Dock("Dock3 - Fourier Transform", size=(600,600))
+d4 = Dock("Dock4 (tabbed) - Smoothed", size=(1100,300))
+d5 = Dock("Dock5 - Image", size=(500,600))
+d6 = Dock("Dock6 (tabbed) - Light Curve", size=(1100,300))
+d7 = Dock("Dock7 (tabbed) - Comparison Counts", size=(500,300))
+d8 = Dock("Dock8 (tabbed) - Seeing", size=(1100,300))
 
 #Define initial layout
 area.addDock(d4, 'left')    
@@ -194,6 +194,7 @@ area.addDock(d7, 'above', d8)
 area.addDock(d5, 'bottom',d1)  
 area.addDock(d2, 'bottom', d5)    
 area.addDock(d3, 'bottom', d7) 
+area.moveDock(d5,'right',d3)
 
 #Define and place widgets into the docks
 
@@ -310,7 +311,7 @@ def click(event):#Linked to image click event
     #x and y are swapped in the GUI!
     x=pos.x()
     y=pos.y()
-    log("Clicked at "+str((x,y)),level=2)
+    log('Clicked at ({:.2f}, {:.2f})'.format(x,y),level=2)
 
     #check if we're marking or unmarking a star
     #if pos.
@@ -324,7 +325,7 @@ def click(event):#Linked to image click event
     print 'final coords: ',newcoords
     #img[pos.x(),pos.y()]=[255,255-img[pos.x(),pos.y(),1],255-img[pos.x(),pos.y(),1]]
     #w5.setImage(img,autoRange=False)
-    log("Star selected at "+str( newcoords ),level=1)
+    log('Star selected at ({:.2f}, {:.2f})'.format(newcoords[0],newcoords[1]),level=1)
 w5.getImageItem().mouseClickEvent = click #Function defined below
 d5.addWidget(w5)
 
