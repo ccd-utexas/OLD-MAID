@@ -484,7 +484,8 @@ def displayFrame(i=framenum,autoscale=False):
     if i > framenum: i=framenum
     if autoscale:
         thisimg=displayimg[i]
-        lowlevel=np.min(thisimg[thisimg > 0])
+        #lowlevel=np.min(thisimg[thisimg > 0])
+        lowlevel=np.percentile(thisimg[thisimg > 0],3)
         highlevel=np.max(thisimg)-1
         w5.setImage(displayimg,autoRange=True,levels=[lowlevel,highlevel])
     else:
