@@ -85,6 +85,11 @@ class WithMenu(QtGui.QMainWindow):
         runPhot.setStatusTip('Run Aperture Photometry on Frames')
         runPhot.triggered.connect(self.run)
         
+        #Load dark for science frames
+        loadDark = QtGui.QAction('Load Dark SPE', self)
+        loadDark.setStatusTip('Open SPE Calibrations for Dark Subtracting Science Images')
+        loadDark.triggered.connect(self.loadDark)
+        
         #Save Layout
         saveLayout = QtGui.QAction('Save layout', self)
         saveLayout.setStatusTip('Save the current dock layout')
@@ -102,6 +107,9 @@ class WithMenu(QtGui.QMainWindow):
         fileMenu.addAction(openFile)
         fileMenu.addAction(runPhot)
         fileMenu.addAction(exitAction)
+        #Calibrations Menu
+        calibrationsMenu = menubar.addMenu('Calibrations')
+        calibrationsMenu.addAction(loadDark)
         #Layout Menu
         layoutMenu = menubar.addMenu('Layout')
         layoutMenu.addAction(saveLayout)
@@ -140,11 +148,23 @@ class WithMenu(QtGui.QMainWindow):
         print fname
         if fname[-4:]=='.spe':
             log("Opening file "+fname,1)
-            self.spefile = fname
+            #self.spefile = fname #I don't think this line does anything.
             #This needs to trigger a major chain of events
             stage1(str(fname))
         else: log("Invalid file type (must be SPE).",3)
         
+        
+    #Load Dark frames
+    def loadDark(self, forflat = False):
+        fname = QtGui.QFileDialog.getOpenFileName(self, 'Open SPE file', 
+                '.',filter='Data (*.spe)')
+        print fname
+        if fname[-4:]=='.spe':
+            log("Opening dark file "+fname,1)
+            log("I didn't really open it, you haven't told me how.",1)
+            #This needs to trigger a major chain of events
+        else: log("Invalid file type (must be SPE).",3)
+    
     #Run Photometry
     def run(self):
         #Do aperture photometry on selected stars
@@ -156,7 +176,6 @@ class WithMenu(QtGui.QMainWindow):
             selectingstars=False
             stage2()
             
-        
         
     #Confirm Quit
     def closeEvent(self, event):
@@ -658,7 +677,7 @@ def nextframe():
 #Set up timer loop for showing old data as simulated data
 timer2 = pg.QtCore.QTimer()
 timer2.timeout.connect(nextframe)
-timer2.start(500)
+timer2.start(2000)
     
 
 def dophot(i):
