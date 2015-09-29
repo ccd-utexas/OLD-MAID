@@ -26,6 +26,7 @@ from astroML.fourier import FT_continuous
 from scipy.interpolate import interp1d
 from astropy.stats import biweight_location, biweight_midvariance
 from photutils import daofind
+from photutils import CircularAperture, CircularAnnulus, aperture_photometry
 from pyqtgraph.dockarea import *
 # Local modules.
 import read_spe
@@ -44,6 +45,7 @@ import read_spe
 # -> revert back to Stage 0.
 stage=0 #start at 0
 def stagechange(num):
+    global stage
     if num in range(4):
         log("Program stage = "+str(num),1)
         stage=num
@@ -134,7 +136,7 @@ class WithMenu(QtGui.QMainWindow):
         Open dialog box, select file, verify that it is a SPE file.
         '''
         fname = QtGui.QFileDialog.getOpenFileName(self, 'Open SPE file', 
-                '/Users/keatonb/',filter='Data (*.spe)')
+                '.',filter='Data (*.spe)')
         print fname
         if fname[-4:]=='.spe':
             log("Opening file "+fname,1)
@@ -147,10 +149,12 @@ class WithMenu(QtGui.QMainWindow):
     def run(self):
         #Do aperture photometry on selected stars
         global numstars, selectingstars
-        if numstars == 0:
+        if len(stars) == 0:
             log("No stars selected.  Select stars before running.",3)
         else:
+            numstars = len(stars)
             selectingstars=False
+            stage2()
             
         
         
@@ -170,20 +174,20 @@ app = QtGui.QApplication([])
 win = WithMenu()
 area = DockArea()
 win.setCentralWidget(area)
-win.resize(1200,600)
+win.resize(1600,1200)
 win.setWindowTitle('ProEM Online Data Analysis')
 
 
 
 ## Set up each of the docks (to hold the widgets)
-d1 = Dock("Dock1 - Observing Log", size=(400,300))
-d2 = Dock("Dock2 - Process Log", size=(400,300))
-d3 = Dock("Dock3 - Fourier Transform", size=(800,400))
-d4 = Dock("Dock4 (tabbed) - Smoothed", size=(800,200))
-d5 = Dock("Dock5 - Image", size=(400,200))
-d6 = Dock("Dock6 (tabbed) - Light Curve", size=(800,200))
-d7 = Dock("Dock7 (tabbed) - Comparison Counts", size=(800,200))
-d8 = Dock("Dock8 (tabbed) - Seeing", size=(800,200))
+d1 = Dock("Dock1 - Observing Log", size=(500,600))
+d2 = Dock("Dock2 - Process Log", size=(500,600))
+d3 = Dock("Dock3 - Fourier Transform", size=(600,600))
+d4 = Dock("Dock4 (tabbed) - Smoothed", size=(1100,300))
+d5 = Dock("Dock5 - Image", size=(500,600))
+d6 = Dock("Dock6 (tabbed) - Light Curve", size=(1100,300))
+d7 = Dock("Dock7 (tabbed) - Comparison Counts", size=(500,300))
+d8 = Dock("Dock8 (tabbed) - Seeing", size=(1100,300))
 
 #Define initial layout
 area.addDock(d4, 'left')    
@@ -194,6 +198,7 @@ area.addDock(d7, 'above', d8)
 area.addDock(d5, 'bottom',d1)  
 area.addDock(d2, 'bottom', d5)    
 area.addDock(d3, 'bottom', d7) 
+area.moveDock(d5,'right',d3)
 
 #Define and place widgets into the docks
 
@@ -268,6 +273,19 @@ w6.addItem(s2)
 w6.addItem(l1)
 #Add widget to dock
 d6.addWidget(w6)
+# Make points change color when clicked
+def clicked(plot, points):
+    global bad
+    #print("clicked points", points)
+    for p in points:
+        if p.pos()[0] in bad:
+            bad.remove(p.pos()[0])
+        else:
+            bad.append(p.pos()[0])
+    update()
+    
+s1.sigClicked.connect(clicked)
+s2.sigClicked.connect(clicked)
 
 
 ## Smoothed Light Curve
@@ -303,29 +321,42 @@ w5.ui.roiBtn.hide()
 #w5.ui.normBtn.hide() #Causing trouble on windows
 #Define function for selecting stars. (must be defined before linking the click action)
 def click(event):#Linked to image click event
-    if event.button() == 1: print "LEFT!"
-    if event.button() == 2: print "RIGHT!"
-    event.accept()
-    pos = event.pos()
-    #x and y are swapped in the GUI!
-    x=pos.x()
-    y=pos.y()
-    log("Clicked at "+str((x,y)),level=2)
+    global stars
+    if event.button() == 1 and selectingstars:
+        event.accept()
+        pos = event.pos()
+        #x and y are swapped in the GUI!
+        x=pos.x()
+        y=pos.y()
+        log('Clicked at ({:.2f}, {:.2f})'.format(x,y),level=2)
+    
+        #check if we're marking or unmarking a star
+        #if pos.
+        #improve coordinates
+        dx,dy = improvecoords(x,y)
+        #print "Clicked at "+str( (pos.x(),pos.y()) )
+        #print 'deltax,y = ' ,dx,dy
+        #round originals so original position *within* pixel doesn't affect answer
+        newcoords=[np.floor(x)+.5+dx,np.floor(y)+.5+dy]
+        stars.append(newcoords)
+        #print 'final coords: ',newcoords
+        targs.setData([p[0] for p in stars],[p[1] for p in stars])
+        #img[pos.x(),pos.y()]=[255,255-img[pos.x(),pos.y(),1],255-img[pos.x(),pos.y(),1]]
+        #w5.setImage(img,autoRange=False)
+        log('Star selected at ({:.2f}, {:.2f})'.format(newcoords[0],newcoords[1]),level=1)
+    elif event.button() == 2: 
+        event.accept()#Passed on to other functionality if not accepted.
+        print "RIGHT!"
 
-    #check if we're marking or unmarking a star
-    #if pos.
-    #improve coordinates
-    dx,dy = improvecoords(x,y)
-    print "Clicked at "+str( (pos.x(),pos.y()) )
-    print 'deltax,y = ' ,dx,dy
-    #round originals so original position *within* pixel doesn't affect answer
-    newcoords=[np.floor(x)+.5+dx,np.floor(y)+.5+dy]
-    starpos.append(newcoords)
-    print 'final coords: ',newcoords
-    #img[pos.x(),pos.y()]=[255,255-img[pos.x(),pos.y(),1],255-img[pos.x(),pos.y(),1]]
-    #w5.setImage(img,autoRange=False)
-    log("Star selected at "+str( newcoords ),level=1)
+
 w5.getImageItem().mouseClickEvent = click #Function defined below
+#w5.keyPressEvent = moveCircles # Seems to be the right thing for detecting frame changes,
+#But I can't connect to it without overriding other behavior.  May need to subclass this.
+
+targs = pg.ScatterPlotItem(brush=None, pen=pg.mkPen('r', width=2),symbol='o',pxMode=False,size=10)
+w5.addItem(targs)
+#Add widget to dock
+
 d5.addWidget(w5)
 
 
@@ -345,7 +376,12 @@ win.show()
 
 
 
-
+# I think everything is set up enough to start doing stuff
+# Send initial message to process log.
+log("ProEMOnline initialized",2)
+log("Development version.  Do not trust.",3)
+stagechange(0)
+log("Open SPE file to begin analysis.",1)
 
 
 
@@ -370,7 +406,7 @@ selectingstars = False
 #Number of stars to do photometry on (target first)
 numstars = 0 #0 means we haven't selected stars yet.
 #Star coords
-stars = [] #list of list of tuple coords
+stars = [] #list of list of list of coords
 #Image data:
 img=[]
 #And another version to look nice
@@ -390,34 +426,21 @@ def stage1(fname):
     #Load SPE File
     
     #Access needed global vars
-    global spefile
+    global spefile,framenum
     #Announce Stage 1    
     stagechange(1)
     #Record SPE filename this once
     spefile = fname
     #Read in SPE data
     readspe()
-    numframes=spe.get_num_frames()
     #now display the first frame
     processframe()
-    '''
-    for i in range(1,numframes):
-        log('frame '+str(i))
-        (thisframe,thistime) = spe.get_frame(i)
-        #framenum=i #nope!
-        #Append all the image info (that doesn't change based on user input)
-        img.append(np.transpose(thisframe))
-        backgroundmed,backgroundvar=charbackground(i=i)#Must do after appending image.
-        backmed.append(backgroundmed)
-        backvar.append(backgroundvar)
-        times.append(thistime)
-    '''
-    #img=np.array(img)
-    
-    makeDisplayImage()
-    displayFrame(autoscale=True)
-    print "current frame: ",w5.currentIndex
-    spe.close()
+    framenum=0
+    displayFrame(autoscale=True,markstars=False)
+    print "current frame: ",framenum
+    #Select stars:
+    selectstars()
+    #spe.close() #In real version we'll close spe
 
 #Helper functions, useful here and elsewhere
 def readspe():
@@ -430,16 +453,24 @@ def readspe():
 
 #Define all the stuff that needs to be done to each incoming frame
 def processframe(i=0):
-    global img,times,backmed,backvar
-    print type(img)
+    global img,displayimg,times,backmed,backvar
     log('Processing frame '+str(i))
     (thisframe,thistime) = spe.get_frame(i)
+    #append stuff to global variables
     img.append(np.transpose(thisframe))
     times.append(thistime)
     backgroundmed,backgroundvar=charbackground(i=i)
     backmed.append(backgroundmed)
     backvar.append(backgroundvar)
     
+    #make display image
+    newdisplayimg=np.copy(img[-1])
+    newdisplayimg[0,0]=0
+    imgvals = newdisplayimg.flatten()
+    img99percentile = np.percentile(imgvals,99)
+    newdisplayimg[newdisplayimg > img99percentile] = img99percentile
+    displayimg.append(newdisplayimg)
+
 
 #Function to characterize the background to find stellar centroids accurately
 #This should be done for each frame as it's read in
@@ -454,6 +485,7 @@ def charbackground(i=framenum):
 
 #Make pretty copy of images for display        
 def makeDisplayImage():
+    #DEPRECIATED! Now a part of processframe()
     #Make a copy of the data without outliers
     global img,displayimg
     displayimg = np.copy(img)
@@ -471,7 +503,7 @@ def makeDisplayImage():
     displayimg=np.array(displayimg)
  
 #show the image to the widget
-def displayFrame(i=framenum,autoscale=False):
+def displayFrame(i=framenum,autoscale=False,markstars=True):
     """Display an RBG image
     
     i is index to display
@@ -483,11 +515,17 @@ def displayFrame(i=framenum,autoscale=False):
     if i > framenum: i=framenum
     if autoscale:
         thisimg=displayimg[i]
-        lowlevel=np.min(thisimg[thisimg > 0])
+        #lowlevel=np.min(thisimg[thisimg > 0])
+        lowlevel=np.percentile(thisimg[thisimg > 0],3)
         highlevel=np.max(thisimg)-1
-        w5.setImage(displayimg,autoRange=True,levels=[lowlevel,highlevel])
+        w5.setImage(np.array(displayimg),autoRange=True,levels=[lowlevel,highlevel],)
+        w5.setCurrentIndex(i)
     else:
-        w5.setImage(displayimg,autoRange=False,autoLevels=False)
+        w5.setImage(np.array(displayimg),autoRange=False,autoLevels=False)
+        w5.setCurrentIndex(i)
+    #Draw position circles:
+    if markstars and i <= len(stars):
+        targs.setData([p[0] for p in stars[i]],[p[1] for p in stars[i]])
         
         
 def selectstars():
@@ -498,24 +536,25 @@ def selectstars():
     '''
     global selectingstars
     selectingstars = True
+    #Is this the inital selection of stars?
     if numstars == 0:
         x=1
     
 
-def improvecoords(x,y,i=w5.currentIndex,pixdist=20,fwhm=8.0,sigma=3.):
+def improvecoords(x,y,i=w5.currentIndex,pixdist=pixdist,fwhm=8.0,sigma=5.):
     """Improve stellar centroid position from guess value. (one at a time)
 
     #return the adjustment than needs to be made in x and y directions
     #NOTE: This may have trouble near edges.
     """
-    print x,y
+    #print x,y
     #x=(1024/binning)-x
     #y=(1024/binning)-y
     #Keep track of motion
     delta = np.zeros(2)
     #Get image subregion around guess position
     subdata=img[i][x-pixdist:x+pixdist,y-pixdist:y+pixdist]
-    print subdata.shape
+    #print subdata.shape
     sources = daofind(subdata - backmed[i], sigma*backvar[i], fwhm,
                       sharplo=0.1, sharphi=1.5, roundlo=-2.0, roundhi=2.0)
     #From what I can tell, daofind returns x and y swapped, so fix it
@@ -546,6 +585,15 @@ def improvecoords(x,y,i=w5.currentIndex,pixdist=20,fwhm=8.0,sigma=3.):
 
 
 
+def setNumStars(num):
+    '''Propogate number of stars to global variables
+    
+    When the number of stars being used is defined, some variable shapes need
+    to be set to match.  Do that here.
+    '''
+    global numstars
+    numstars=num
+
 
 
 
@@ -563,16 +611,131 @@ def improvecoords(x,y,i=w5.currentIndex,pixdist=20,fwhm=8.0,sigma=3.):
 #### STAGE 2 ####
 
 #Function to loop through and do the photometry
-aperture=4. #for now, for testing.   <---- Update later
-def dophot():
+
+#Aperture details (provide a way to change these!)
+apsizes=np.arange(1,11) #for now, for testing.   <---- Update later
+r_in = 16.  #inner sky annulus radius #change in terms of binning eventually
+r_out = 24. #outer sky annulus radius #change in terms of binning eventually
+
+#Phot results: variables to hold light curves and uncertainties
+photresults=np.array([])
+
+
+#Run the stage 2 loop
+def stage2():
+    global stars, stage
+    stagechange(2)
+    #Make stars array an array of arrays of star coord arrays (yikes)
+    # i.e, it needs to get pushed a level deeper
+    stars=[stars]
+    #Run photometry on the first frame
+    dophot(0)
+    
+
+#For demo purposes, read in the next frame of the spe file each time this is called
+def nextframe():
+    global framenum,stars
+    if stage == 2:
+        oldcoords = stars[framenum]
+        framenum+=1
+        log('nextframe run on frame '+str(framenum))
+        #print 'nextframe run on frame '+str(framenum)
+        processframe(i=framenum)
+        newcoords=[]
+        for coord in oldcoords:
+            dx,dy = improvecoords(coord[0],coord[1],i=framenum)
+            newcoords.append([np.floor(coord[0])+.5+dx,np.floor(coord[1])+.5+dy])        
+        stars.append(newcoords)
+        #print stars
+        #Show the frame
+        displayFrame(i=framenum,markstars=True)
+        #Perform photometry
+        dophot(i=framenum)
+        #Update light curves  
+        updatelcs()
+        
+
+#Set up timer loop for showing old data as simulated data
+timer2 = pg.QtCore.QTimer()
+timer2.timeout.connect(nextframe)
+timer2.start(500)
+    
+
+def dophot(i):
     '''Do photometric measurements.
     
-    Stars have been selected.  Run through frames and measure photometry.
+    Stars have been selected.  Do aperture photometry on given frame
     '''
-    global framenum
+    global photresults
+    #print "dophot(i) called with i="+str(i)
+    #Do the aperture photometry
+
+    #The aperture_photometry() function can do many stars at once
+    #But you must first do a background subtraction
+
+
+    #We're going to save a lot of information in this step:
+    #Total counts and uncertainty for every aperture size for every star
+    #And eventually for every frame...
+    coords = stars[i]
+    thisphotometry = np.zeros((len(coords),len(apsizes)))
+    for n in range(numstars):
+        #Loop through the stars in the image
+        annulus_aperture = CircularAnnulus(coords[n], r_in=r_in, r_out=r_out)
+        #print aperture_photometry(img[i],annulus_aperture).keys()
+        background_mean = aperture_photometry(img[i],annulus_aperture)['aperture_sum'][0]/annulus_aperture.area() 
+        #NOTE on the above line: This should really be a median!
+        #Issue 161 on photutils https://github.com/astropy/photutils/issues/161 is open as of 09/28/15
+        gain = 12.63 #? From PI Certificate of Performance for "traditional 5MHz gain."  Confirm this value!
+        #loop through aperture sizes
+        for j,size in enumerate(apsizes):
+            aperture = CircularAperture(coords[n], r=size) 
+            #phot = aperture_photometry(x-background_mean,aperture,error=backgroundvar,gain=gain)
+            phot = aperture_photometry(img[i]-background_mean,aperture)
+            thisphotometry[n,j]=phot['aperture_sum'][0]
+    print "photometry ",thisphotometry
+    if i == 0:
+        photresults = np.array([thisphotometry])
+    else:
+        #print "photresults dimensions are "+str(photresults.shape)
+        #print "trying to append shape "+str(thisphotometry.shape)
+        photresults = np.append(photresults,[thisphotometry],axis=0)
+    #print "photresults dimensions are "+str(photresults.shape)
+    #yay.  This deserves to all be checked very carefully, especially since the gain only affects uncertainty and not overall counts.
+
     
-    
-    
+#Update display.
+def updatelcs(i=framenum):
+    #Identify which points to include/exclude, up to frame i
+    goodmask=np.ones(framenum, np.bool)
+    goodmask[bad] = 0
+    badmask = np.zeros(framenum, np.bool)
+    badmask[bad] = 1
+    targdivided = photresults[:,0,2]/photresults[:,1,2] #currently only using one comp star and aperture size set to 3 pix.
+    times = np.arange(photresults.shape[0])#Placeholder for real timestamps.
+    s1.setData(times[goodmask[:i]],targdivided[goodmask[:i]])
+    s2.setData(times[badmask[:i]],targdivided[badmask[:i]])
+    l1.setData(times[goodmask[:i]],targdivided[goodmask[:i]])
+    ss1.setData(times[goodmask[:i]],smooth(targdivided[goodmask[:i]],winsize))
+    sl1.setData(times[goodmask[:i]],smooth(targdivided[goodmask[:i]],winsize))
+    xnew = np.arange(min(times[goodmask[:i]]),max(times[goodmask[:i]]))
+    if len(xnew) > 1 and len(xnew) % 2 == 0:
+        tofourier = interp1d(times[goodmask[:i]],targdivided[goodmask[:i]])
+        xnew = np.arange(min(times[goodmask[:i]]),max(times[goodmask[:i]]))
+        ynew = tofourier(xnew)
+        f,H = FT_continuous(xnew,ynew)
+        H=2*np.sqrt(H.real**2 + H.imag**2.)/len(ynew)
+        ft.setData(f[len(f)/2.:],H[len(f)/2.:])
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -603,72 +766,11 @@ def smooth(flux, window_size):
 
 
 
-
-
-#### Define all variables that everything needs access to:
-
-
-#Keep track of the current frame:
-#One version that we do science on
-#One version for display purposes
-def newframe(fitsfile):
-    """For given filename, return science and display images.
-    """
-    img = fits.getdata(fitsfile)[0]
-    displayimg = np.copy(img)
-    #replace everything above 99%tile
-    #don't do calulcations on this adjusted array!!!
-    imgvals = displayimg.flatten()
-    img99percentile = np.percentile(imgvals,99)
-    displayimg[displayimg > img99percentile] = img99percentile
-    #make color
-    displayimg=np.array([displayimg,displayimg,displayimg]).transpose()
-    return img,displayimg
-
-
-#Use a function to display a new image
-#Autoscaling levels optional
-def displayframe(displayimg,autoscale=False):
-    """Display an RBG image
-    Autoscale optional.
-    Return nothing.
-    """
-    if autoscale:
-        w5.setImage(displayimg,autoRange=True,levels=[np.min(displayimg),np.max(displayimg)-1])
-    else:
-        w5.setImage(displayimg,autoRange=False,autoLevels=False)
-
-#Set up a list to keep track of star positions
-starpos=[]
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 ##We need to keep track of two things:
 # - The time series data
 # - The indices of selected points
 data = np.empty(100)
 bad = []
-
-
-
-
-
 
 
 #Stream data
@@ -709,35 +811,13 @@ def update():
 
 
 
-# I think everything is set up enough to start doing stuff
-# Send initial message to process log.
-log("ProEMOnline initialized",2)
-log("Development version.  Do not trust.",3)
-stagechange(0)
-log("Open SPE file to begin analysis.",1)
 
 
-newdata()
-timer = pg.QtCore.QTimer()
-timer.timeout.connect(newdata)
-timer.start(1000)
-
-
-
-# Make points change color when clicked
-## Make all plots clickable
-def clicked(plot, points):
-    global bad
-    #print("clicked points", points)
-    for p in points:
-        if p.pos()[0] in bad:
-            bad.remove(p.pos()[0])
-        else:
-            bad.append(p.pos()[0])
-    update()
-    
-s1.sigClicked.connect(clicked)
-s2.sigClicked.connect(clicked)
+#From previous data streaming example
+#newdata()
+#timer = pg.QtCore.QTimer()
+#timer.timeout.connect(newdata)
+#timer.start(1000)
 
 
 
