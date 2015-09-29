@@ -26,6 +26,7 @@ from astroML.fourier import FT_continuous
 from scipy.interpolate import interp1d
 from astropy.stats import biweight_location, biweight_midvariance
 from photutils import daofind
+from photutils import CircularAperture, CircularAnnulus, aperture_photometry
 from pyqtgraph.dockarea import *
 # Local modules.
 import read_spe
@@ -320,12 +321,12 @@ def click(event):#Linked to image click event
         #if pos.
         #improve coordinates
         dx,dy = improvecoords(x,y)
-        print "Clicked at "+str( (pos.x(),pos.y()) )
-        print 'deltax,y = ' ,dx,dy
+        #print "Clicked at "+str( (pos.x(),pos.y()) )
+        #print 'deltax,y = ' ,dx,dy
         #round originals so original position *within* pixel doesn't affect answer
         newcoords=[np.floor(x)+.5+dx,np.floor(y)+.5+dy]
         stars.append(newcoords)
-        print 'final coords: ',newcoords
+        #print 'final coords: ',newcoords
         targs.setData([p[0] for p in stars],[p[1] for p in stars])
         #img[pos.x(),pos.y()]=[255,255-img[pos.x(),pos.y(),1],255-img[pos.x(),pos.y(),1]]
         #w5.setImage(img,autoRange=False)
@@ -333,15 +334,11 @@ def click(event):#Linked to image click event
     elif event.button() == 2: 
         event.accept()#Passed on to other functionality if not accepted.
         print "RIGHT!"
-#Also need a function that moves the plotted position markers with the current frame
-def moveCircles(event):#Don't accept event so it doesn't override existing functionality.
-    print "timechanged",event
-    log("timechanged ")
-    targs.setData([p[0] for p in stars[w5.currentIndex]],[p[1] for p in stars[w5.currentIndex]])
-    
+
 
 w5.getImageItem().mouseClickEvent = click #Function defined below
-w5.keyPressEvent = moveCircles
+#w5.keyPressEvent = moveCircles # Seems to be the right thing for detecting frame changes,
+#But I can't connect to it without overriding other behavior.  May need to subclass this.
 
 targs = pg.ScatterPlotItem(brush=None, pen=pg.mkPen('r', width=2),symbol='o',pxMode=False,size=10)
 w5.addItem(targs)
@@ -390,7 +387,7 @@ selectingstars = False
 #Number of stars to do photometry on (target first)
 numstars = 0 #0 means we haven't selected stars yet.
 #Star coords
-stars = [] #list of list of tuple coords
+stars = [] #list of list of list of coords
 #Image data:
 img=[]
 #And another version to look nice
@@ -420,7 +417,7 @@ def stage1(fname):
     #now display the first frame
     processframe()
     framenum=0
-    displayFrame(autoscale=True)
+    displayFrame(autoscale=True,markstars=False)
     print "current frame: ",framenum
     #Select stars:
     selectstars()
@@ -487,7 +484,7 @@ def makeDisplayImage():
     displayimg=np.array(displayimg)
  
 #show the image to the widget
-def displayFrame(i=framenum,autoscale=False):
+def displayFrame(i=framenum,autoscale=False,markstars=True):
     """Display an RBG image
     
     i is index to display
@@ -507,6 +504,9 @@ def displayFrame(i=framenum,autoscale=False):
     else:
         w5.setImage(np.array(displayimg),autoRange=False,autoLevels=False)
         w5.setCurrentIndex(i)
+    #Draw position circles:
+    if markstars and i <= len(stars):
+        targs.setData([p[0] for p in stars[i]],[p[1] for p in stars[i]])
         
         
 def selectstars():
@@ -522,20 +522,20 @@ def selectstars():
         x=1
     
 
-def improvecoords(x,y,i=w5.currentIndex,pixdist=20,fwhm=8.0,sigma=3.):
+def improvecoords(x,y,i=w5.currentIndex,pixdist=pixdist,fwhm=8.0,sigma=5.):
     """Improve stellar centroid position from guess value. (one at a time)
 
     #return the adjustment than needs to be made in x and y directions
     #NOTE: This may have trouble near edges.
     """
-    print x,y
+    #print x,y
     #x=(1024/binning)-x
     #y=(1024/binning)-y
     #Keep track of motion
     delta = np.zeros(2)
     #Get image subregion around guess position
     subdata=img[i][x-pixdist:x+pixdist,y-pixdist:y+pixdist]
-    print subdata.shape
+    #print subdata.shape
     sources = daofind(subdata - backmed[i], sigma*backvar[i], fwhm,
                       sharplo=0.1, sharphi=1.5, roundlo=-2.0, roundhi=2.0)
     #From what I can tell, daofind returns x and y swapped, so fix it
@@ -566,6 +566,15 @@ def improvecoords(x,y,i=w5.currentIndex,pixdist=20,fwhm=8.0,sigma=3.):
 
 
 
+def setNumStars(num):
+    '''Propogate number of stars to global variables
+    
+    When the number of stars being used is defined, some variable shapes need
+    to be set to match.  Do that here.
+    '''
+    global numstars
+    numstars=num
+
 
 
 
@@ -584,6 +593,14 @@ def improvecoords(x,y,i=w5.currentIndex,pixdist=20,fwhm=8.0,sigma=3.):
 
 #Function to loop through and do the photometry
 
+#Aperture details (provide a way to change these!)
+apsizes=np.arange(1,11) #for now, for testing.   <---- Update later
+r_in = 16.  #inner sky annulus radius #change in terms of binning eventually
+r_out = 24. #outer sky annulus radius #change in terms of binning eventually
+
+#Phot results: variables to hold light curves and uncertainties
+photresults=np.array([])
+
 
 #Run the stage 2 loop
 def stage2():
@@ -592,8 +609,9 @@ def stage2():
     #Make stars array an array of arrays of star coord arrays (yikes)
     # i.e, it needs to get pushed a level deeper
     stars=[stars]
+    #Run photometry on the first frame
+    dophot(0)
     
-
 
 #For demo purposes, read in the next frame of the spe file each time this is called
 def nextframe():
@@ -602,31 +620,66 @@ def nextframe():
         oldcoords = stars[framenum]
         framenum+=1
         log('nextframe run on frame '+str(framenum))
+        print 'nextframe run on frame '+str(framenum)
         processframe(i=framenum)
-        displayFrame(i=framenum)
         newcoords=[]
         for coord in oldcoords:
-            dx,dy = improvecoords(coord[0],coord[1])
-            newcoords.append([np.floor(coord[0])+.5+dx,np.floor(coord[1])+.5+dy])
-        
+            dx,dy = improvecoords(coord[0],coord[1],i=framenum)
+            newcoords.append([np.floor(coord[0])+.5+dx,np.floor(coord[1])+.5+dy])        
         stars.append(newcoords)
-        targs.setData([p[0] for p in newcoords],[p[1] for p in newcoords])
+        #print stars
+        displayFrame(i=framenum,markstars=True)
+        dophot(i=framenum)
+        #targs.setData([p[0] for p in newcoords],[p[1] for p in newcoords])
         
 
 timer2 = pg.QtCore.QTimer()
 timer2.timeout.connect(nextframe)
 timer2.start(1000)
+    
 
-aperture=4. #for now, for testing.   <---- Update later
-def dophot():
+def dophot(i):
     '''Do photometric measurements.
     
-    Stars have been selected.  Run through frames and measure photometry.
+    Stars have been selected.  Do aperture photometry on given frame
     '''
-    global framenum
-    
-    
-    
+    global photresults
+    print "dophot(i) called with i="+str(i)
+    #Do the aperture photometry
+
+    #The aperture_photometry() function can do many stars at once
+    #But you must first do a background subtraction
+
+
+    #We're going to save a lot of information in this step:
+    #Total counts and uncertainty for every aperture size for every star
+    #And eventually for every frame...
+    coords = stars[i]
+    thisphotometry = np.zeros((len(coords),len(apsizes)))
+    for n in range(numstars):
+        #Loop through the stars in the image
+        annulus_aperture = CircularAnnulus(coords[n], r_in=r_in, r_out=r_out)
+        print aperture_photometry(img[i],annulus_aperture).keys()
+        background_mean = aperture_photometry(img[i],annulus_aperture)['aperture_sum'][0]/annulus_aperture.area() #This should really be a median!
+        gain = 12.63 #? From PI Certificate of Performance for "traditional 5MHz gain."  Confirm this value!
+        #loop through aperture sizes
+        for j,size in enumerate(apsizes):
+            aperture = CircularAperture(coords[n], r=size) 
+            #phot = aperture_photometry(x-background_mean,aperture,error=backgroundvar,gain=gain)
+            phot = aperture_photometry(img[i]-background_mean,aperture)
+            thisphotometry[n,j]=phot['aperture_sum'][0]
+    print "photometry ",thisphotometry
+    if i == 0:
+        photresults = np.array([thisphotometry])
+    else:
+        print "photresults dimensions are "+str(photresults.shape)
+        print "trying to append shape "+str(thisphotometry.shape)
+        photresults = np.append(photresults,[thisphotometry],axis=0)
+    print "photresults dimensions are "+str(photresults.shape)
+        
+    #yay.  This deserves to all be checked very carefully, especially since the gain only affects uncertainty and not overall counts.
+        
+        
 
 
 
