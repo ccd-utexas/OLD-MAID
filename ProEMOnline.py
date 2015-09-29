@@ -273,6 +273,19 @@ w6.addItem(s2)
 w6.addItem(l1)
 #Add widget to dock
 d6.addWidget(w6)
+# Make points change color when clicked
+def clicked(plot, points):
+    global bad
+    #print("clicked points", points)
+    for p in points:
+        if p.pos()[0] in bad:
+            bad.remove(p.pos()[0])
+        else:
+            bad.append(p.pos()[0])
+    update()
+    
+s1.sigClicked.connect(clicked)
+s2.sigClicked.connect(clicked)
 
 
 ## Smoothed Light Curve
@@ -363,6 +376,12 @@ win.show()
 
 
 
+# I think everything is set up enough to start doing stuff
+# Send initial message to process log.
+log("ProEMOnline initialized",2)
+log("Development version.  Do not trust.",3)
+stagechange(0)
+log("Open SPE file to begin analysis.",1)
 
 
 
@@ -620,7 +639,7 @@ def nextframe():
         oldcoords = stars[framenum]
         framenum+=1
         log('nextframe run on frame '+str(framenum))
-        print 'nextframe run on frame '+str(framenum)
+        #print 'nextframe run on frame '+str(framenum)
         processframe(i=framenum)
         newcoords=[]
         for coord in oldcoords:
@@ -628,14 +647,18 @@ def nextframe():
             newcoords.append([np.floor(coord[0])+.5+dx,np.floor(coord[1])+.5+dy])        
         stars.append(newcoords)
         #print stars
+        #Show the frame
         displayFrame(i=framenum,markstars=True)
+        #Perform photometry
         dophot(i=framenum)
-        #targs.setData([p[0] for p in newcoords],[p[1] for p in newcoords])
+        #Update light curves  
+        updatelcs()
         
 
+#Set up timer loop for showing old data as simulated data
 timer2 = pg.QtCore.QTimer()
 timer2.timeout.connect(nextframe)
-timer2.start(1000)
+timer2.start(500)
     
 
 def dophot(i):
@@ -644,7 +667,7 @@ def dophot(i):
     Stars have been selected.  Do aperture photometry on given frame
     '''
     global photresults
-    print "dophot(i) called with i="+str(i)
+    #print "dophot(i) called with i="+str(i)
     #Do the aperture photometry
 
     #The aperture_photometry() function can do many stars at once
@@ -659,8 +682,10 @@ def dophot(i):
     for n in range(numstars):
         #Loop through the stars in the image
         annulus_aperture = CircularAnnulus(coords[n], r_in=r_in, r_out=r_out)
-        print aperture_photometry(img[i],annulus_aperture).keys()
-        background_mean = aperture_photometry(img[i],annulus_aperture)['aperture_sum'][0]/annulus_aperture.area() #This should really be a median!
+        #print aperture_photometry(img[i],annulus_aperture).keys()
+        background_mean = aperture_photometry(img[i],annulus_aperture)['aperture_sum'][0]/annulus_aperture.area() 
+        #NOTE on the above line: This should really be a median!
+        #Issue 161 on photutils https://github.com/astropy/photutils/issues/161 is open as of 09/28/15
         gain = 12.63 #? From PI Certificate of Performance for "traditional 5MHz gain."  Confirm this value!
         #loop through aperture sizes
         for j,size in enumerate(apsizes):
@@ -672,14 +697,45 @@ def dophot(i):
     if i == 0:
         photresults = np.array([thisphotometry])
     else:
-        print "photresults dimensions are "+str(photresults.shape)
-        print "trying to append shape "+str(thisphotometry.shape)
+        #print "photresults dimensions are "+str(photresults.shape)
+        #print "trying to append shape "+str(thisphotometry.shape)
         photresults = np.append(photresults,[thisphotometry],axis=0)
-    print "photresults dimensions are "+str(photresults.shape)
-        
+    #print "photresults dimensions are "+str(photresults.shape)
     #yay.  This deserves to all be checked very carefully, especially since the gain only affects uncertainty and not overall counts.
-        
-        
+
+    
+#Update display.
+def updatelcs(i=framenum):
+    #Identify which points to include/exclude, up to frame i
+    goodmask=np.ones(framenum, np.bool)
+    goodmask[bad] = 0
+    badmask = np.zeros(framenum, np.bool)
+    badmask[bad] = 1
+    targdivided = photresults[:,0,2]/photresults[:,1,2] #currently only using one comp star and aperture size set to 3 pix.
+    times = np.arange(photresults.shape[0])#Placeholder for real timestamps.
+    s1.setData(times[goodmask[:i]],targdivided[goodmask[:i]])
+    s2.setData(times[badmask[:i]],targdivided[badmask[:i]])
+    l1.setData(times[goodmask[:i]],targdivided[goodmask[:i]])
+    ss1.setData(times[goodmask[:i]],smooth(targdivided[goodmask[:i]],winsize))
+    sl1.setData(times[goodmask[:i]],smooth(targdivided[goodmask[:i]],winsize))
+    xnew = np.arange(min(times[goodmask[:i]]),max(times[goodmask[:i]]))
+    if len(xnew) > 1 and len(xnew) % 2 == 0:
+        tofourier = interp1d(times[goodmask[:i]],targdivided[goodmask[:i]])
+        xnew = np.arange(min(times[goodmask[:i]]),max(times[goodmask[:i]]))
+        ynew = tofourier(xnew)
+        f,H = FT_continuous(xnew,ynew)
+        H=2*np.sqrt(H.real**2 + H.imag**2.)/len(ynew)
+        ft.setData(f[len(f)/2.:],H[len(f)/2.:])
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -710,56 +766,11 @@ def smooth(flux, window_size):
 
 
 
-
-
-#### Define all variables that everything needs access to:
-
-
-#Keep track of the current frame:
-#One version that we do science on
-#One version for display purposes
-def newframe(fitsfile):
-    """For given filename, return science and display images.
-    """
-    img = fits.getdata(fitsfile)[0]
-    displayimg = np.copy(img)
-    #replace everything above 99%tile
-    #don't do calulcations on this adjusted array!!!
-    imgvals = displayimg.flatten()
-    img99percentile = np.percentile(imgvals,99)
-    displayimg[displayimg > img99percentile] = img99percentile
-    #make color
-    displayimg=np.array([displayimg,displayimg,displayimg]).transpose()
-    return img,displayimg
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 ##We need to keep track of two things:
 # - The time series data
 # - The indices of selected points
 data = np.empty(100)
 bad = []
-
-
-
-
-
 
 
 #Stream data
@@ -800,35 +811,13 @@ def update():
 
 
 
-# I think everything is set up enough to start doing stuff
-# Send initial message to process log.
-log("ProEMOnline initialized",2)
-log("Development version.  Do not trust.",3)
-stagechange(0)
-log("Open SPE file to begin analysis.",1)
 
 
-newdata()
-timer = pg.QtCore.QTimer()
-timer.timeout.connect(newdata)
-timer.start(1000)
-
-
-
-# Make points change color when clicked
-## Make all plots clickable
-def clicked(plot, points):
-    global bad
-    #print("clicked points", points)
-    for p in points:
-        if p.pos()[0] in bad:
-            bad.remove(p.pos()[0])
-        else:
-            bad.append(p.pos()[0])
-    update()
-    
-s1.sigClicked.connect(clicked)
-s2.sigClicked.connect(clicked)
+#From previous data streaming example
+#newdata()
+#timer = pg.QtCore.QTimer()
+#timer.timeout.connect(newdata)
+#timer.start(1000)
 
 
 
