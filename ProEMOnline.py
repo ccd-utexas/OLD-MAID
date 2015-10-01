@@ -20,8 +20,14 @@ from pyqtgraph.Qt import QtCore, QtGui
 import numpy as np
 import pickle #for saving layouts
 from glob import glob
+from scipy import stats
 #import math
-import astropy.io.fits as fits
+import os
+import csv
+import sys
+import datetime as dt
+import dateutil.parser
+from astropy.io import fits
 from astroML.fourier import FT_continuous
 from scipy.interpolate import interp1d
 from astropy.stats import biweight_location, biweight_midvariance
@@ -85,6 +91,21 @@ class WithMenu(QtGui.QMainWindow):
         runPhot.setStatusTip('Run Aperture Photometry on Frames')
         runPhot.triggered.connect(self.run)
         
+        #Load dark for science frames
+        loadDark = QtGui.QAction('Load Dark SPE', self)
+        loadDark.setStatusTip('Open SPE Calibrations for Dark Subtracting Science Images')
+        loadDark.triggered.connect(self.openDark)
+        
+        #Load dark for flat frames
+        loadDarkForFlats = QtGui.QAction('Load Dark for Flats', self)
+        loadDarkForFlats.setStatusTip('Open SPE Calibrations for Dark Subtracting Flat Images')
+        loadDarkForFlats.triggered.connect(self.openDarkForFlats)
+        
+        #Load flat
+        loadFlat = QtGui.QAction('Load Flat SPE', self)
+        loadFlat.setStatusTip('Open SPE Calibrations for Flatfielding Science Images')
+        loadFlat.triggered.connect(self.openFlat)
+        
         #Save Layout
         saveLayout = QtGui.QAction('Save layout', self)
         saveLayout.setStatusTip('Save the current dock layout')
@@ -102,6 +123,11 @@ class WithMenu(QtGui.QMainWindow):
         fileMenu.addAction(openFile)
         fileMenu.addAction(runPhot)
         fileMenu.addAction(exitAction)
+        #Calibrations Menu
+        calibrationsMenu = menubar.addMenu('Calibrations')
+        calibrationsMenu.addAction(loadDark)
+        calibrationsMenu.addAction(loadDarkForFlats)
+        calibrationsMenu.addAction(loadFlat)
         #Layout Menu
         layoutMenu = menubar.addMenu('Layout')
         layoutMenu.addAction(saveLayout)
@@ -140,11 +166,92 @@ class WithMenu(QtGui.QMainWindow):
         print fname
         if fname[-4:]=='.spe':
             log("Opening file "+fname,1)
-            self.spefile = fname
+            #self.spefile = fname #I don't think this line does anything.
             #This needs to trigger a major chain of events
             stage1(str(fname))
         else: log("Invalid file type (must be SPE).",3)
         
+        
+    #Load Dark frames
+    def openDark(self):
+        global dark, darkExists
+        fname = QtGui.QFileDialog.getOpenFileName(self, 'Open SPE dark file', 
+                '.',filter='Data (*.spe)')
+        if fname[-4:]=='.spe':
+            log("Opening dark file "+fname,1)
+            dspe = read_spe.File(str(fname))
+            num_darks=dspe.get_num_frames()
+            #get all frames in SPE file
+            #stack as 3D numpy array
+            (frames,_)=dspe.get_frame(0)
+            frames=np.array([frames])
+            for i in range(1,num_darks):
+                (thisframe,_)=dspe.get_frame(i)
+                frames=np.concatenate((frames,[thisframe]),0)
+            dark=np.median(frames,axis=0)
+            darkExists = True
+            log("Mean dark counts: "+str(np.mean(dark)))
+            dspe.close()
+            processframe()
+            displayFrame(autoscale=True,markstars=False)
+        else: log("Invalid file type (must be SPE).",3)
+        
+    #Load Dark frames for flat calibration
+    def openDarkForFlats(self):
+        global darkForFlat, darkExistsForFlat
+        fname = QtGui.QFileDialog.getOpenFileName(self, 'Open SPE dark for flat calibration', 
+                '.',filter='Data (*.spe)')
+        if fname[-4:]=='.spe':
+            log("Opening dark file "+fname+" for flat calibration.",1)
+            dspe = read_spe.File(str(fname))
+            num_darks=dspe.get_num_frames()
+            #get all frames in SPE file
+            #stack as 3D numpy array
+            (frames,_)=dspe.get_frame(0)
+            frames=np.array([frames])
+            for i in range(1,num_darks):
+                (thisframe,_)=dspe.get_frame(i)
+                frames=np.concatenate((frames,[thisframe]),0)
+            darkForFlat=np.median(frames,axis=0)
+            darkExistsForFlat = True
+            log("Mean dark counts for flat: "+str(np.mean(darkForFlat)))
+            dspe.close()
+        else: log("Invalid file type (must be SPE).",3)        
+        
+        
+    #Load Flat frames
+    def openFlat(self):
+        global flat, flatExists
+        if darkExistsForFlat == False:
+            log("Import dark for reducting flats before importing flat file.",3)
+        else:
+            fname = QtGui.QFileDialog.getOpenFileName(self, 'Open SPE flat file', 
+                    '.',filter='Data (*.spe)')
+            if fname[-4:]=='.spe':
+                log("Opening flat file "+fname,1)
+                fspe = read_spe.File(str(fname))
+                num_flats=fspe.get_num_frames()
+                #get all frames in SPE file
+                #stack as 3D numpy array
+                (frames,_)=fspe.get_frame(0)
+                modes=[]
+                frames = frames - darkForFlat
+                modes.append(stats.mode(frames.flatten())[0][0])
+                frames=np.array([frames/modes[0]])
+                for i in range(1,num_flats):
+                    (thisframe,_)=fspe.get_frame(i)
+                    thisframe = thisframe-darkForFlat
+                    modes.append(stats.mode(thisframe.flatten())[0][0])
+                    frames=np.concatenate((frames,[thisframe/modes[i]]),0)
+                flat=np.median(frames,axis=0)
+                flatExists=True
+                log("Median flat counts: "+str(np.median(modes)))
+                fspe.close()
+                processframe()
+                displayFrame(autoscale=True,markstars=False)
+            else: log("Invalid file type (must be SPE).",3)
+        
+    
     #Run Photometry
     def run(self):
         #Do aperture photometry on selected stars
@@ -156,7 +263,6 @@ class WithMenu(QtGui.QMainWindow):
             selectingstars=False
             stage2()
             
-        
         
     #Confirm Quit
     def closeEvent(self, event):
@@ -329,9 +435,6 @@ def click(event):#Linked to image click event
         x=pos.x()
         y=pos.y()
         log('Clicked at ({:.2f}, {:.2f})'.format(x,y),level=2)
-    
-        #check if we're marking or unmarking a star
-        #if pos.
         #improve coordinates
         dx,dy = improvecoords(x,y)
         #print "Clicked at "+str( (pos.x(),pos.y()) )
@@ -399,6 +502,14 @@ log("Open SPE file to begin analysis.",1)
 spefile = ''
 #SPE Data
 spe=[]
+#Dark data
+dark = []
+darkExists=False
+darkForFlat = []
+darkExistsForFlat=False
+#Flat data
+flat = []
+flatExists=False
 #Number of last *reduced* (photometry measures) frame
 framenum=-1 #none yet
 #Flag to indicate whether we are currently selecting stars in the frame:
@@ -408,7 +519,7 @@ numstars = 0 #0 means we haven't selected stars yet.
 #Star coords
 stars = [] #list of list of list of coords
 #Image data:
-img=[]
+img=[] #start with placeholder contents
 #And another version to look nice
 displayimg=[]
 #Elapsed timestamps
@@ -426,7 +537,7 @@ def stage1(fname):
     #Load SPE File
     
     #Access needed global vars
-    global spefile,framenum
+    global spefile,dark,flat
     #Announce Stage 1    
     stagechange(1)
     #Record SPE filename this once
@@ -435,8 +546,11 @@ def stage1(fname):
     readspe()
     #now display the first frame
     processframe()
-    framenum=0
     displayFrame(autoscale=True,markstars=False)
+    #Load calibration frames and set up
+    log("Please load dark, flat, and dark for flat SPE files",1)
+    dark = np.zeros(img[0].shape)
+    flat = np.ones(img[0].shape)
     print "current frame: ",framenum
     #Select stars:
     selectstars()
@@ -453,25 +567,42 @@ def readspe():
 
 #Define all the stuff that needs to be done to each incoming frame
 def processframe(i=0):
-    global img,displayimg,times,backmed,backvar
-    log('Processing frame '+str(i))
+    global img,displayimg,times,backmed,backvar,framenum
     (thisframe,thistime) = spe.get_frame(i)
+    #calibrate (doesn't do anything if calibration frames are not available):
+    if darkExists: thisframe=(thisframe-dark)
+    if flatExists: thisframe=thisframe/flat
     #append stuff to global variables
-    img.append(np.transpose(thisframe))
-    times.append(thistime)
-    backgroundmed,backgroundvar=charbackground(i=i)
-    backmed.append(backgroundmed)
-    backvar.append(backgroundvar)
+    #Replace if this frame already exists, otherwise append
+    if i <= framenum: #replace
+        log('Re-processing frame '+str(i)+' of '+str(framenum))
+        img[i]=np.transpose(thisframe)
+        times[i]=thistime
+        backgroundmed,backgroundvar=charbackground(i=i)
+        backmed[i]=backgroundmed
+        backvar[i]=backgroundvar
+    else: #append
+        log('Processing frame '+str(i)+' of '+str(framenum))
+        img.append(np.transpose(thisframe))
+        times.append(thistime)
+        backgroundmed,backgroundvar=charbackground(i=i)
+        backmed.append(backgroundmed)
+        backvar.append(backgroundvar)
     
     #make display image
-    newdisplayimg=np.copy(img[-1])
+    newdisplayimg=np.copy(img[i])
     newdisplayimg[0,0]=0
     imgvals = newdisplayimg.flatten()
     img99percentile = np.percentile(imgvals,99)
     newdisplayimg[newdisplayimg > img99percentile] = img99percentile
-    displayimg.append(newdisplayimg)
-
-
+    log("Framenum: "+str(framenum),3)
+    #Replace if this frame already exists, otherwise append
+    if i <= framenum: #replace
+        displayimg[i]=newdisplayimg
+    else: #append
+        displayimg.append(newdisplayimg)
+        framenum+=1
+    
 #Function to characterize the background to find stellar centroids accurately
 #This should be done for each frame as it's read in
 def charbackground(i=framenum):
@@ -482,25 +613,6 @@ def charbackground(i=framenum):
     backgroundmed = biweight_location(img[i])
     backgroundvar = biweight_midvariance(img[i])
     return backgroundmed, backgroundvar        
-
-#Make pretty copy of images for display        
-def makeDisplayImage():
-    #DEPRECIATED! Now a part of processframe()
-    #Make a copy of the data without outliers
-    global img,displayimg
-    displayimg = np.copy(img)
-    
-    #Insert one 0-value pixel to control minimum
-    for i in range(displayimg.shape[0]):
-        displayimg[i,0,0]=0
-        imgvals = displayimg[i].flatten()
-        #replace everything above 99%tile
-        #don't do calulcations on this adjusted array!!!
-        img99percentile = np.percentile(imgvals,99)
-        displayimg[i][displayimg[i] > img99percentile] = img99percentile
-        #make color
-    #self.displayimg=np.rollaxis(np.array(displayimg),0,1)
-    displayimg=np.array(displayimg)
  
 #show the image to the widget
 def displayFrame(i=framenum,autoscale=False,markstars=True):
@@ -524,7 +636,7 @@ def displayFrame(i=framenum,autoscale=False,markstars=True):
         w5.setImage(np.array(displayimg),autoRange=False,autoLevels=False)
         w5.setCurrentIndex(i)
     #Draw position circles:
-    if markstars and i <= len(stars):
+    if markstars and i <= len(stars) and len(stars) > 0:
         targs.setData([p[0] for p in stars[i]],[p[1] for p in stars[i]])
         
         
@@ -634,13 +746,12 @@ def stage2():
 
 #For demo purposes, read in the next frame of the spe file each time this is called
 def nextframe():
-    global framenum,stars
+    global stars
     if stage == 2:
         oldcoords = stars[framenum]
-        framenum+=1
         log('nextframe run on frame '+str(framenum))
         #print 'nextframe run on frame '+str(framenum)
-        processframe(i=framenum)
+        processframe(i=framenum+1)
         newcoords=[]
         for coord in oldcoords:
             dx,dy = improvecoords(coord[0],coord[1],i=framenum)
@@ -658,7 +769,7 @@ def nextframe():
 #Set up timer loop for showing old data as simulated data
 timer2 = pg.QtCore.QTimer()
 timer2.timeout.connect(nextframe)
-timer2.start(500)
+timer2.start(2000)
     
 
 def dophot(i):
