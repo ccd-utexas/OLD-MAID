@@ -807,9 +807,9 @@ def dophot(i):
     thisphotometry = np.zeros((len(coords),len(apsizes)))
     for n in range(numstars):
         #Loop through the stars in the image
-        annulus_aperture = CircularAnnulus(coords[n], r_in=r_in, r_out=r_out)
+        #annulus_aperture = CircularAnnulus(coords[n], r_in=r_in, r_out=r_out)
         #print aperture_photometry(img[i],annulus_aperture).keys()
-        background_mean = aperture_photometry(img[i],annulus_aperture)['aperture_sum'][0]/annulus_aperture.area() 
+        #background_mean = aperture_photometry(img[i],annulus_aperture)['aperture_sum'][0]/annulus_aperture.area() 
         #NOTE on the above line: This should really be a median!
         #Issue 161 on photutils https://github.com/astropy/photutils/issues/161 is open as of 09/28/15
         gain = 12.63 #? From PI Certificate of Performance for "traditional 5MHz gain."  Confirm this value!
@@ -817,7 +817,7 @@ def dophot(i):
         for j,size in enumerate(apsizes):
             aperture = CircularAperture(coords[n], r=size) 
             #phot = aperture_photometry(x-background_mean,aperture,error=backgroundvar,gain=gain)
-            phot = aperture_photometry(img[i]-background_mean,aperture)
+            phot = aperture_photometry(img[i]-backmed[i],aperture)
             thisphotometry[n,j]=phot['aperture_sum'][0]
     print "photometry ",thisphotometry
     if i == 0:
@@ -839,14 +839,16 @@ def updatelcs(i=framenum):
     badmask[bad] = 1
     targdivided = photresults[:,0,2]/photresults[:,1,2] #currently only using one comp star and aperture size set to 3 pix.
     times = np.arange(photresults.shape[0])#Placeholder for real timestamps.
-    s1.setData(times[goodmask[:i]],targdivided[goodmask[:i]])
+    goodfluxnorm=targdivided[goodmask[:i]]/np.mean(targdivided[goodmask[:i]])
+    s1.setData(times[goodmask[:i]],goodfluxnorm)
     #s2.setData(times[badmask[:i]],targdivided[badmask[:i]])
-    l1.setData(times[goodmask[:i]],targdivided[goodmask[:i]])
-    ss1.setData(times[goodmask[:i]],smooth(targdivided[goodmask[:i]],winsize))
-    sl1.setData(times[goodmask[:i]],smooth(targdivided[goodmask[:i]],winsize))
+    l1.setData(times[goodmask[:i]],goodfluxnorm)
+    goodfluxnormsmooth=smooth(goodfluxnorm,winsize)
+    ss1.setData(times[goodmask[:i]],goodfluxnormsmooth)
+    sl1.setData(times[goodmask[:i]],goodfluxnormsmooth)
     xnew = np.arange(min(times[goodmask[:i]]),max(times[goodmask[:i]]))
     if len(xnew) > 1 and len(xnew) % 2 == 0:
-        tofourier = interp1d(times[goodmask[:i]],targdivided[goodmask[:i]])
+        tofourier = interp1d(times[goodmask[:i]],goodfluxnormsmooth-1.)
         xnew = np.arange(min(times[goodmask[:i]]),max(times[goodmask[:i]]))
         ynew = tofourier(xnew)
         f,H = FT_continuous(xnew,ynew)
