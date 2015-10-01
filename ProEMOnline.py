@@ -108,6 +108,11 @@ class WithMenu(QtGui.QMainWindow):
         loadFlat.setStatusTip('Open SPE Calibrations for Flatfielding Science Images')
         loadFlat.triggered.connect(self.openFlat)
         
+        #Restore points
+        restorePoints = QtGui.QAction('Restore Points', self)
+        restorePoints.setStatusTip('Return All Previously Discarded Points to the Light Curve.')
+        restorePoints.triggered.connect(self.restorePts)
+                
         #Save Layout
         saveLayout = QtGui.QAction('Save layout', self)
         saveLayout.setStatusTip('Save the current dock layout')
@@ -130,6 +135,9 @@ class WithMenu(QtGui.QMainWindow):
         calibrationsMenu.addAction(loadDark)
         calibrationsMenu.addAction(loadDarkForFlats)
         calibrationsMenu.addAction(loadFlat)
+        #Interactions menu
+        interactionsMenu = menubar.addMenu('Interact')
+        interactionsMenu.addAction(restorePoints)
         #Layout Menu
         layoutMenu = menubar.addMenu('Layout')
         layoutMenu.addAction(saveLayout)
@@ -252,8 +260,13 @@ class WithMenu(QtGui.QMainWindow):
                 processframe()
                 displayFrame(autoscale=True,markstars=False)
             else: log("Invalid file type (must be SPE).",3)
-        
     
+    
+    #Restore previously "bad" points
+    def restorePts(self):
+        global bad
+        bad=[]
+        
     #Run Photometry
     def run(self):
         #Do aperture photometry on selected stars
