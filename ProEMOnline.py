@@ -20,6 +20,7 @@ from pyqtgraph.Qt import QtCore, QtGui
 import numpy as np
 import pickle #for saving layouts
 from glob import glob
+from scipy import stats
 #import math
 import os
 import csv
@@ -174,7 +175,7 @@ class WithMenu(QtGui.QMainWindow):
     #Load Dark frames
     def openDark(self):
         global dark, darkExists
-        fname = QtGui.QFileDialog.getOpenFileName(self, 'Open SPE file', 
+        fname = QtGui.QFileDialog.getOpenFileName(self, 'Open SPE dark file', 
                 '.',filter='Data (*.spe)')
         if fname[-4:]=='.spe':
             log("Opening dark file "+fname,1)
@@ -197,8 +198,8 @@ class WithMenu(QtGui.QMainWindow):
         
     #Load Dark frames for flat calibration
     def openDarkForFlats(self):
-        global darkForFlat
-        fname = QtGui.QFileDialog.getOpenFileName(self, 'Open SPE file', 
+        global darkForFlat, darkExistsForFlat
+        fname = QtGui.QFileDialog.getOpenFileName(self, 'Open SPE dark for flat calibration', 
                 '.',filter='Data (*.spe)')
         if fname[-4:]=='.spe':
             log("Opening dark file "+fname+" for flat calibration.",1)
@@ -212,35 +213,43 @@ class WithMenu(QtGui.QMainWindow):
                 (thisframe,_)=dspe.get_frame(i)
                 frames=np.concatenate((frames,[thisframe]),0)
             darkForFlat=np.median(frames,axis=0)
-            log("Mean dark counts: "+str(np.mean(dark)))
+            darkExistsForFlat = True
+            log("Mean dark counts for flat: "+str(np.mean(darkForFlat)))
             dspe.close()
-            processframe()
-            displayFrame(autoscale=True,markstars=False)
         else: log("Invalid file type (must be SPE).",3)        
         
         
-            #Load Dark frames
+    #Load Flat frames
     def openFlat(self):
-        global flat
-        fname = QtGui.QFileDialog.getOpenFileName(self, 'Open SPE file', 
-                '.',filter='Data (*.spe)')
-        if fname[-4:]=='.spe':
-            log("Opening dark file "+fname,1)
-            fspe = read_spe.File(str(fname))
-            num_flats=fspe.get_num_frames()
-            #get all frames in SPE file
-            #stack as 3D numpy array
-            (frames,_)=fspe.get_frame(0)
-            frames=np.array([frames])
-            for i in range(1,num_flats):
-                (thisframe,_)=fspe.get_frame(i)
-                frames=np.concatenate((frames,[thisframe]),0)
-            dark=np.median(frames,axis=0)
-            log("Mean dark counts: "+str(np.mean(dark)))
-            dspe.close()
-            processframe()
-            displayFrame(autoscale=True,markstars=False)
-        else: log("Invalid file type (must be SPE).",3)
+        global flat, flatExists
+        if darkExistsForFlat == False:
+            log("Import dark for reducting flats before importing flat file.",3)
+        else:
+            fname = QtGui.QFileDialog.getOpenFileName(self, 'Open SPE flat file', 
+                    '.',filter='Data (*.spe)')
+            if fname[-4:]=='.spe':
+                log("Opening flat file "+fname,1)
+                fspe = read_spe.File(str(fname))
+                num_flats=fspe.get_num_frames()
+                #get all frames in SPE file
+                #stack as 3D numpy array
+                (frames,_)=fspe.get_frame(0)
+                modes=[]
+                frames = frames - darkForFlat
+                modes.append(stats.mode(frames.flatten())[0][0])
+                frames=np.array([frames/modes[0]])
+                for i in range(1,num_flats):
+                    (thisframe,_)=fspe.get_frame(i)
+                    thisframe = thisframe-darkForFlat
+                    modes.append(stats.mode(thisframe.flatten())[0][0])
+                    frames=np.concatenate((frames,[thisframe/modes[i]]),0)
+                flat=np.median(frames,axis=0)
+                flatExists=True
+                log("Median flat counts: "+str(np.median(modes)))
+                fspe.close()
+                processframe()
+                displayFrame(autoscale=True,markstars=False)
+            else: log("Invalid file type (must be SPE).",3)
         
     
     #Run Photometry
