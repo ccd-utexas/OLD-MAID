@@ -384,13 +384,13 @@ w6 = pg.PlotWidget(title="Dock 6 plot",labels={'left': 'rel. flux', 'bottom': 'f
 # Set up plot components
 # Raw points
 s1 = pg.ScatterPlotItem(brush=(255,0,0), pen='w',symbol='o')
-# Bad (ignored) points
-s2 = pg.ScatterPlotItem(brush=(255,0,0), pen='b',symbol='o')
+# Bad (ignored) points #Not currently displayed since it causes scaling issues.
+#s2 = pg.ScatterPlotItem(brush=(255,0,0), pen='b',symbol='o')
 # Connecting lines
 l1 = pg.PlotCurveItem()
 #Add components to plot widget.
 w6.addItem(s1)
-w6.addItem(s2)
+#w6.addItem(s2)
 w6.addItem(l1)
 #Add widget to dock
 d6.addWidget(w6)
@@ -406,7 +406,7 @@ def clicked(plot, points):
     update()
     
 s1.sigClicked.connect(clicked)
-s2.sigClicked.connect(clicked)
+#s2.sigClicked.connect(clicked)
 
 
 ## Smoothed Light Curve
@@ -840,7 +840,7 @@ def updatelcs(i=framenum):
     targdivided = photresults[:,0,2]/photresults[:,1,2] #currently only using one comp star and aperture size set to 3 pix.
     times = np.arange(photresults.shape[0])#Placeholder for real timestamps.
     s1.setData(times[goodmask[:i]],targdivided[goodmask[:i]])
-    s2.setData(times[badmask[:i]],targdivided[badmask[:i]])
+    #s2.setData(times[badmask[:i]],targdivided[badmask[:i]])
     l1.setData(times[goodmask[:i]],targdivided[goodmask[:i]])
     ss1.setData(times[goodmask[:i]],smooth(targdivided[goodmask[:i]],winsize))
     sl1.setData(times[goodmask[:i]],smooth(targdivided[goodmask[:i]],winsize))
@@ -922,7 +922,7 @@ def update():
     badmask[bad] = 1
     times = np.arange(len(data))#Placeholder for real timestamps.
     s1.setData(times[goodmask[:ptr]],data[goodmask[:ptr]])
-    s2.setData(times[badmask[:ptr]],data[badmask[:ptr]])
+    #s2.setData(times[badmask[:ptr]],data[badmask[:ptr]])
     l1.setData(times[goodmask[:ptr]],data[goodmask[:ptr]])
     ss1.setData(times[goodmask[:ptr]],smooth(data[goodmask[:ptr]],winsize))
     sl1.setData(times[goodmask[:ptr]],smooth(data[goodmask[:ptr]],winsize))
