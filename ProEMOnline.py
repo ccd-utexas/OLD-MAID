@@ -455,7 +455,7 @@ def click(event):#Linked to image click event
         #print "Clicked at "+str( (pos.x(),pos.y()) )
         #print 'deltax,y = ' ,dx,dy
         #round originals so original position *within* pixel doesn't affect answer
-        newcoords=[np.floor(x)+.5+dx,np.floor(y)+.5+dy]
+        newcoords=[np.floor(x)+dx,np.floor(y)+dy]
         stars.append(newcoords)
         #print 'final coords: ',newcoords
         targs.setData([p[0] for p in stars],[p[1] for p in stars])
@@ -471,7 +471,7 @@ w5.getImageItem().mouseClickEvent = click #Function defined below
 #w5.keyPressEvent = moveCircles # Seems to be the right thing for detecting frame changes,
 #But I can't connect to it without overriding other behavior.  May need to subclass this.
 
-targs = pg.ScatterPlotItem(brush=None, pen=pg.mkPen('r', width=2),symbol='o',pxMode=False,size=10)
+targs = pg.ScatterPlotItem(brush=None, pen=pg.mkPen('r', width=2),symbol='o',pxMode=False,size=2)
 w5.addItem(targs)
 #Add widget to dock
 
@@ -537,6 +537,8 @@ stars = [] #list of list of list of coords
 img=[] #start with placeholder contents
 #And another version to look nice
 displayimg=[]
+#Keep track of "Bad" points
+bad=[]
 #Elapsed timestamps
 times=[]
 #Search radius (box for now), improve later
@@ -653,6 +655,7 @@ def displayFrame(i=framenum,autoscale=False,markstars=True):
     #Draw position circles:
     if markstars and i <= len(stars) and len(stars) > 0:
         targs.setData([p[0] for p in stars[i]],[p[1] for p in stars[i]])
+        targs.setSize(apsize)
         
         
 def selectstars():
@@ -741,6 +744,7 @@ def setNumStars(num):
 
 #Aperture details (provide a way to change these!)
 apsizes=np.arange(1,11) #for now, for testing.   <---- Update later
+apsize=apsizes[4]
 r_in = 16.  #inner sky annulus radius #change in terms of binning eventually
 r_out = 24. #outer sky annulus radius #change in terms of binning eventually
 
@@ -815,9 +819,11 @@ def dophot(i):
         gain = 12.63 #? From PI Certificate of Performance for "traditional 5MHz gain."  Confirm this value!
         #loop through aperture sizes
         for j,size in enumerate(apsizes):
-            aperture = CircularAperture(coords[n], r=size) 
+            aperture = CircularAperture(np.array(coords[n]), r=size) 
             #phot = aperture_photometry(x-background_mean,aperture,error=backgroundvar,gain=gain)
-            phot = aperture_photometry(img[i]-backmed[i],aperture)
+            #Why am I getting negative numbers?
+            #phot = aperture_photometry(img[i]-np.median(img),aperture)
+            phot = aperture_photometry(img[i],aperture)
             thisphotometry[n,j]=phot['aperture_sum'][0]
     print "photometry ",thisphotometry
     if i == 0:
@@ -829,7 +835,18 @@ def dophot(i):
     #print "photresults dimensions are "+str(photresults.shape)
     #yay.  This deserves to all be checked very carefully, especially since the gain only affects uncertainty and not overall counts.
 
-    
+
+#define smoothing function For smoothed light curve
+winsize = 5.#win size in frames
+def smooth(flux, window_size):
+    #make sure flux is longer than window_size
+    if len(flux) < window_size:
+        return flux
+    else:
+        window = np.ones(int(window_size))/float(window_size)
+        return np.convolve(flux, window, 'same')
+
+
 #Update display.
 def updatelcs(i=framenum):
     #Identify which points to include/exclude, up to frame i
@@ -848,94 +865,13 @@ def updatelcs(i=framenum):
     sl1.setData(times[goodmask[:i]],goodfluxnormsmooth)
     xnew = np.arange(min(times[goodmask[:i]]),max(times[goodmask[:i]]))
     if len(xnew) > 1 and len(xnew) % 2 == 0:
-        tofourier = interp1d(times[goodmask[:i]],goodfluxnormsmooth-1.)
+        tofourier = interp1d(times[goodmask[:i]],goodfluxnorm-1.)
         xnew = np.arange(min(times[goodmask[:i]]),max(times[goodmask[:i]]))
         ynew = tofourier(xnew)
         f,H = FT_continuous(xnew,ynew)
         H=2*np.sqrt(H.real**2 + H.imag**2.)/len(ynew)
         ft.setData(f[len(f)/2.:],H[len(f)/2.:])
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-#define smoothing function For smoothed light curve
-winsize = 5.#win size in frames
-def smooth(flux, window_size):
-    #make sure flux is longer than window_size
-    if len(flux) < window_size:
-        return flux
-    else:
-        window = np.ones(int(window_size))/float(window_size)
-        return np.convolve(flux, window, 'same')
-
-
-
-##We need to keep track of two things:
-# - The time series data
-# - The indices of selected points
-data = np.empty(100)
-bad = []
-
-
-#Stream data
-ptr = 0
-def newdata():
-    global data,ptr
-    data[ptr] = np.random.normal()+1.*np.sin(2.*np.pi*ptr/20)+0.4*np.sin(2.*np.pi*ptr/30)+0.5*np.sin(2.*np.pi*ptr/1000)
-    ptr += 1
-    #Double length of array as needed to hold new data.
-    if ptr >= data.shape[0]:
-        tmp = data
-        data = np.empty(data.shape[0] * 2)
-        data[:tmp.shape[0]] = tmp
-    update()
-    
-#Update display.
-def update():
-    global data,ptr,bad
-    #Identify which points to include/exclude
-    goodmask=np.ones(len(data), np.bool)
-    goodmask[bad] = 0
-    badmask = np.zeros(len(data), np.bool)
-    badmask[bad] = 1
-    times = np.arange(len(data))#Placeholder for real timestamps.
-    s1.setData(times[goodmask[:ptr]],data[goodmask[:ptr]])
-    #s2.setData(times[badmask[:ptr]],data[badmask[:ptr]])
-    l1.setData(times[goodmask[:ptr]],data[goodmask[:ptr]])
-    ss1.setData(times[goodmask[:ptr]],smooth(data[goodmask[:ptr]],winsize))
-    sl1.setData(times[goodmask[:ptr]],smooth(data[goodmask[:ptr]],winsize))
-    xnew = np.arange(min(times[goodmask[:ptr]]),max(times[goodmask[:ptr]]))
-    if len(xnew) > 1 and len(xnew) % 2 == 0:
-        tofourier = interp1d(times[goodmask[:ptr]],data[goodmask[:ptr]])
-        xnew = np.arange(min(times[goodmask[:ptr]]),max(times[goodmask[:ptr]]))
-        ynew = tofourier(xnew)
-        f,H = FT_continuous(xnew,ynew)
-        H=2*np.sqrt(H.real**2 + H.imag**2.)/len(ynew)
-        ft.setData(f[len(f)/2.:],H[len(f)/2.:])
 
 
 
