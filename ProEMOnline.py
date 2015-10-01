@@ -61,6 +61,8 @@ def stagechange(num):
 
 #### STAGE 0 ####
 #Set up the general GUI aspects
+defaultdir = '/Users/keatonb/Observing/ProEMData/'#where to search for SPE files
+
 
 #Set up main window with menu items
 class WithMenu(QtGui.QMainWindow):
@@ -162,7 +164,7 @@ class WithMenu(QtGui.QMainWindow):
         Open dialog box, select file, verify that it is a SPE file.
         '''
         fname = QtGui.QFileDialog.getOpenFileName(self, 'Open SPE file', 
-                '.',filter='Data (*.spe)')
+                defaultdir,filter='Data (*.spe)')
         print fname
         if fname[-4:]=='.spe':
             log("Opening file "+fname,1)
@@ -176,7 +178,7 @@ class WithMenu(QtGui.QMainWindow):
     def openDark(self):
         global dark, darkExists
         fname = QtGui.QFileDialog.getOpenFileName(self, 'Open SPE dark file', 
-                '.',filter='Data (*.spe)')
+                defaultdir,filter='Data (*.spe)')
         if fname[-4:]=='.spe':
             log("Opening dark file "+fname,1)
             dspe = read_spe.File(str(fname))
@@ -200,7 +202,7 @@ class WithMenu(QtGui.QMainWindow):
     def openDarkForFlats(self):
         global darkForFlat, darkExistsForFlat
         fname = QtGui.QFileDialog.getOpenFileName(self, 'Open SPE dark for flat calibration', 
-                '.',filter='Data (*.spe)')
+                defaultdir,filter='Data (*.spe)')
         if fname[-4:]=='.spe':
             log("Opening dark file "+fname+" for flat calibration.",1)
             dspe = read_spe.File(str(fname))
@@ -226,7 +228,7 @@ class WithMenu(QtGui.QMainWindow):
             log("Import dark for reducting flats before importing flat file.",3)
         else:
             fname = QtGui.QFileDialog.getOpenFileName(self, 'Open SPE flat file', 
-                    '.',filter='Data (*.spe)')
+                    defaultdir,filter='Data (*.spe)')
             if fname[-4:]=='.spe':
                 log("Opening flat file "+fname,1)
                 fspe = read_spe.File(str(fname))
@@ -769,7 +771,7 @@ def nextframe():
 #Set up timer loop for showing old data as simulated data
 timer2 = pg.QtCore.QTimer()
 timer2.timeout.connect(nextframe)
-timer2.start(2000)
+timer2.start(200)
     
 
 def dophot(i):
