@@ -461,6 +461,7 @@ def click(event):#Linked to image click event
         stars.append(newcoords)
         #print 'final coords: ',newcoords
         targs.setData([p[0] for p in stars],[p[1] for p in stars])
+        targs.setPen(pencolors[0:len(stars)])
         #img[pos.x(),pos.y()]=[255,255-img[pos.x(),pos.y(),1],255-img[pos.x(),pos.y(),1]]
         #w5.setImage(img,autoRange=False)
         log('Star selected at ({:.2f}, {:.2f})'.format(newcoords[0],newcoords[1]),level=1)
@@ -473,7 +474,12 @@ w5.getImageItem().mouseClickEvent = click #Function defined below
 #w5.keyPressEvent = moveCircles # Seems to be the right thing for detecting frame changes,
 #But I can't connect to it without overriding other behavior.  May need to subclass this.
 
-targs = pg.ScatterPlotItem(brush=None, pen=pg.mkPen('r', width=2),symbol='o',pxMode=False,size=2)
+
+#Set up plot for apertures around stars
+#print QtGui.QColor.colorNames() for available names.
+stringcolors=['red','green','blue','cyan','magenta','yellow','darkred','darkgreen','darkblue','darkcyan','darkmagenta','darkyellow']
+pencolors = [pg.mkPen(QtGui.QColor(c), width=3) for c in stringcolors]
+targs = pg.ScatterPlotItem(brush=None, pen=pencolors[0],symbol='o',pxMode=False,size=6)
 w5.addItem(targs)
 #Add widget to dock
 
