@@ -85,6 +85,7 @@ class WithMenu(QtGui.QMainWindow):
         openFile = QtGui.QAction('&Open SPE', self)
         openFile.setShortcut('Ctrl+O')
         openFile.setStatusTip('Open SPE File')
+        #openFile.setCheckable(True)
         openFile.triggered.connect(self.openSPE)
         
         #Run Photometry
@@ -100,7 +101,7 @@ class WithMenu(QtGui.QMainWindow):
         
         #Load dark for flat frames
         loadDarkForFlats = QtGui.QAction('Load Dark for Flats', self)
-        loadDarkForFlats.setStatusTip('Open SPE Calibrations for Dark Subtracting Flat Images')
+        loadDarkForFlats.setStatusTip('Open SPE Calibrations for Dark Subtracting Flat Images')     
         loadDarkForFlats.triggered.connect(self.openDarkForFlats)
         
         #Load flat
@@ -368,6 +369,7 @@ def log(text,level=0):
     level=2: Major change: bold black;
     level=3: Warning message: bold red; 
     '''
+    text=str(text)
     colors = ['darkgray','black','black','red']
     prefix = ['','','','WARNING: ']
     fontweight = [50,50,75,75]
@@ -807,7 +809,10 @@ def dophot(i):
     #We're going to save a lot of information in this step:
     #Total counts and uncertainty for every aperture size for every star
     #And eventually for every frame...
-    coords = stars[i]
+
+    #Note that the photometry package seems to reference x and y coords
+    #as the tranpose of what we've been using.  Switch the order here:
+    coords = [star[::-1] for star in stars[i]]
     thisphotometry = np.zeros((len(coords),len(apsizes)))
     for n in range(numstars):
         #Loop through the stars in the image
@@ -823,7 +828,7 @@ def dophot(i):
             #phot = aperture_photometry(x-background_mean,aperture,error=backgroundvar,gain=gain)
             #Why am I getting negative numbers?
             #phot = aperture_photometry(img[i]-np.median(img),aperture)
-            phot = aperture_photometry(img[i],aperture)
+            phot = aperture_photometry(img[i]-backmed[i],aperture)
             thisphotometry[n,j]=phot['aperture_sum'][0]
     print "photometry ",thisphotometry
     if i == 0:
