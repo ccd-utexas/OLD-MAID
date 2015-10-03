@@ -305,17 +305,19 @@ win.setWindowTitle('ProEM Online Data Analysis')
 d1 = Dock("Dock1 - Observing Log", size=(500,600))
 d2 = Dock("Dock2 - Process Log", size=(500,600))
 d3 = Dock("Dock3 - Fourier Transform", size=(600,600))
-d4 = Dock("Dock4 (tabbed) - Smoothed", size=(1100,300))
+d4 = Dock("Dock4 - Smoothed", size=(1100,300))
 d5 = Dock("Dock5 - Image", size=(500,600))
-d6 = Dock("Dock6 (tabbed) - Light Curve", size=(1100,300))
-d7 = Dock("Dock7 (tabbed) - Comparison Counts", size=(500,300))
-d8 = Dock("Dock8 (tabbed) - Seeing", size=(1100,300))
+d6 = Dock("Dock6 - Light Curve", size=(1100,300))
+d7 = Dock("Dock7 - Comparison Counts", size=(500,300))
+d8 = Dock("Dock8 - Sky Brightness", size=(1100,300))
+d9 = Dock("Dock8 - Seeing", size=(1100,300))
 
 #Define initial layout
 area.addDock(d4, 'left')    
 area.addDock(d1, 'right',d4)    
 area.addDock(d6, 'above', d4)
-area.addDock(d8, 'bottom', d4)  
+area.addDock(d9, 'bottom', d4)  
+area.addDock(d8, 'above', d9) 
 area.addDock(d7, 'above', d8)  
 area.addDock(d5, 'bottom',d1)  
 area.addDock(d2, 'bottom', d5)    
@@ -420,16 +422,23 @@ w4.addItem(sl1)
 d4.addWidget(w4)
 
 
-## Comp Star Counts
+## Raw Star/Sky Counts
 w7 = pg.PlotWidget(title="Dock 7 plot")
 d7.addWidget(w7)
 #Hold the individual plot items in this list once they are created:
 rawcounts=[]
 
-## Sky/Seeing
-w8 = pg.PlotWidget(title="Dock 8 plot")
-w8.plot(np.random.normal(size=100))
+## Sky
+w8 = pg.PlotWidget(title="Dock 8 plot",labels={'left': 'median sky counts', 'bottom': 'frame #'})
+sky = pg.PlotCurveItem()
+w8.addItem(sky)
 d8.addWidget(w8)
+
+## Seeing
+w9 = pg.PlotWidget(title="Dock 9 plot",labels={'left': 'seeing (")', 'bottom': 'frame #'})
+seeing = pg.PlotCurveItem()
+w9.addItem(seeing) #Placeholder for now
+d9.addWidget(w9)
 
 
 ## Fourier Transform
@@ -895,7 +904,8 @@ def updatelcs(i=framenum):
         ft.setData(f[len(f)/2.:],H[len(f)/2.:])
     #Raw Counts:
     for i,splot in enumerate(rawcounts): splot.setData(times,photresults[:,i,apsizeindex])
-
+    #Sky brightness
+    sky.setData(times,backmed)
 
 
 
