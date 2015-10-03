@@ -505,7 +505,8 @@ d5.addWidget(w5)
 
 ## Show the program!
 win.show()
-
+win.raise_()
+#win.activateWindow()
 
 
 
