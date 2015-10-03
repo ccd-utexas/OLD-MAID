@@ -422,9 +422,9 @@ d4.addWidget(w4)
 
 ## Comp Star Counts
 w7 = pg.PlotWidget(title="Dock 7 plot")
-w7.plot(np.random.normal(size=100))
 d7.addWidget(w7)
-
+#Hold the individual plot items in this list once they are created:
+rawcounts=[]
 
 ## Sky/Seeing
 w8 = pg.PlotWidget(title="Dock 8 plot")
@@ -451,7 +451,7 @@ def click(event):#Linked to image click event
         #x and y are swapped in the GUI!
         x=pos.x()
         y=pos.y()
-        log('Clicked at ({:.2f}, {:.2f})'.format(x,y),level=2)
+        log('Clicked at ({:.2f}, {:.2f})'.format(x,y),level=0)
         #improve coordinates
         dx,dy = improvecoords(x,y)
         #print "Clicked at "+str( (pos.x(),pos.y()) )
@@ -460,11 +460,16 @@ def click(event):#Linked to image click event
         newcoords=[np.floor(x)+dx,np.floor(y)+dy]
         stars.append(newcoords)
         #print 'final coords: ',newcoords
+        #Mark stars in image display
         targs.setData([p[0] for p in stars],[p[1] for p in stars])
         targs.setPen(pencolors[0:len(stars)])
+        #Set up plot for raw counts in second panel:
+        rawcounts.append(pg.ScatterPlotItem(pen=pencolors[len(stars)-1],symbol='o',size=1))
+        
         #img[pos.x(),pos.y()]=[255,255-img[pos.x(),pos.y(),1],255-img[pos.x(),pos.y(),1]]
         #w5.setImage(img,autoRange=False)
-        log('Star selected at ({:.2f}, {:.2f})'.format(newcoords[0],newcoords[1]),level=1)
+        log('Star selected at ({:.2f}, {:.2f})'.format(newcoords[0],newcoords[1]),level=2)
+        
     elif event.button() == 2: 
         event.accept()#Passed on to other functionality if not accepted.
         print "RIGHT!"
@@ -477,7 +482,9 @@ w5.getImageItem().mouseClickEvent = click #Function defined below
 
 #Set up plot for apertures around stars
 #print QtGui.QColor.colorNames() for available names.
-stringcolors=['red','green','blue','cyan','magenta','yellow','darkred','darkgreen','darkblue','darkcyan','darkmagenta','darkyellow']
+stringcolors=['red','green','blue','magenta','orange','yellow',
+              'darkred','darkgreen','darkblue','darkmagenta','darkorange','darkgoldenrod',
+              'hotpink','seagreen','skyblue','salmon','brown','lightyellow']
 pencolors = [pg.mkPen(QtGui.QColor(c), width=3) for c in stringcolors]
 targs = pg.ScatterPlotItem(brush=None, pen=pencolors[0],symbol='o',pxMode=False,size=6)
 w5.addItem(targs)
@@ -663,7 +670,8 @@ def displayFrame(i=framenum,autoscale=False,markstars=True):
     #Draw position circles:
     if markstars and i <= len(stars) and len(stars) > 0:
         targs.setData([p[0] for p in stars[i]],[p[1] for p in stars[i]])
-        targs.setSize(apsize)
+        targs.setSize(apsizes[apsizeindex])
+        targs.setPen(pencolors[0:numstars])
         
         
 def selectstars():
@@ -752,7 +760,7 @@ def setNumStars(num):
 
 #Aperture details (provide a way to change these!)
 apsizes=np.arange(1,11) #for now, for testing.   <---- Update later
-apsize=apsizes[4]
+apsizeindex=4
 r_in = 16.  #inner sky annulus radius #change in terms of binning eventually
 r_out = 24. #outer sky annulus radius #change in terms of binning eventually
 
@@ -764,6 +772,8 @@ photresults=np.array([])
 def stage2():
     global stars, stage
     stagechange(2)
+    #Add plot items for raw counts panel to plot
+    for splot in rawcounts: w7.addItem(splot)
     #Make stars array an array of arrays of star coord arrays (yikes)
     # i.e, it needs to get pushed a level deeper
     stars=[stars]
@@ -865,7 +875,7 @@ def updatelcs(i=framenum):
     goodmask[bad] = 0
     badmask = np.zeros(framenum, np.bool)
     badmask[bad] = 1
-    targdivided = photresults[:,0,2]/photresults[:,1,2] #currently only using one comp star and aperture size set to 3 pix.
+    targdivided = photresults[:,0,apsizeindex]/photresults[:,1,apsizeindex] #currently only using one comp star and aperture size set to 3 pix.
     times = np.arange(photresults.shape[0])#Placeholder for real timestamps.
     goodfluxnorm=targdivided[goodmask[:i]]/np.mean(targdivided[goodmask[:i]])
     s1.setData(times[goodmask[:i]],goodfluxnorm)
@@ -875,6 +885,7 @@ def updatelcs(i=framenum):
     ss1.setData(times[goodmask[:i]],goodfluxnormsmooth)
     sl1.setData(times[goodmask[:i]],goodfluxnormsmooth)
     xnew = np.arange(min(times[goodmask[:i]]),max(times[goodmask[:i]]))
+    #Fourier Transform
     if len(xnew) > 1 and len(xnew) % 2 == 0:
         tofourier = interp1d(times[goodmask[:i]],goodfluxnorm-1.)
         xnew = np.arange(min(times[goodmask[:i]]),max(times[goodmask[:i]]))
@@ -882,8 +893,8 @@ def updatelcs(i=framenum):
         f,H = FT_continuous(xnew,ynew)
         H=2*np.sqrt(H.real**2 + H.imag**2.)/len(ynew)
         ft.setData(f[len(f)/2.:],H[len(f)/2.:])
-
-
+    #Raw Counts:
+    for i,splot in enumerate(rawcounts): splot.setData(times,photresults[:,i,apsizeindex])
 
 
 
