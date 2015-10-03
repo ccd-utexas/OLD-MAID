@@ -30,6 +30,7 @@ import dateutil.parser
 from astropy.io import fits
 from astroML.fourier import FT_continuous
 from scipy.interpolate import interp1d
+import scipy.ndimage.filters as filters
 from astropy.stats import biweight_location, biweight_midvariance
 from photutils import daofind
 from photutils import CircularAperture, CircularAnnulus, aperture_photometry
@@ -305,17 +306,19 @@ win.setWindowTitle('ProEM Online Data Analysis')
 d1 = Dock("Dock1 - Observing Log", size=(500,600))
 d2 = Dock("Dock2 - Process Log", size=(500,600))
 d3 = Dock("Dock3 - Fourier Transform", size=(600,600))
-d4 = Dock("Dock4 (tabbed) - Smoothed", size=(1100,300))
+d4 = Dock("Dock4 - Smoothed", size=(1100,300))
 d5 = Dock("Dock5 - Image", size=(500,600))
-d6 = Dock("Dock6 (tabbed) - Light Curve", size=(1100,300))
-d7 = Dock("Dock7 (tabbed) - Comparison Counts", size=(500,300))
-d8 = Dock("Dock8 (tabbed) - Seeing", size=(1100,300))
+d6 = Dock("Dock6 - Light Curve", size=(1100,300))
+d7 = Dock("Dock7 - Comparison Counts", size=(500,300))
+d8 = Dock("Dock8 - Sky Brightness", size=(1100,300))
+d9 = Dock("Dock8 - Seeing", size=(1100,300))
 
 #Define initial layout
 area.addDock(d4, 'left')    
 area.addDock(d1, 'right',d4)    
 area.addDock(d6, 'above', d4)
-area.addDock(d8, 'bottom', d4)  
+area.addDock(d9, 'bottom', d4)  
+area.addDock(d8, 'above', d9) 
 area.addDock(d7, 'above', d8)  
 area.addDock(d5, 'bottom',d1)  
 area.addDock(d2, 'bottom', d5)    
@@ -420,16 +423,23 @@ w4.addItem(sl1)
 d4.addWidget(w4)
 
 
-## Comp Star Counts
+## Raw Star/Sky Counts
 w7 = pg.PlotWidget(title="Dock 7 plot")
 d7.addWidget(w7)
 #Hold the individual plot items in this list once they are created:
 rawcounts=[]
 
-## Sky/Seeing
-w8 = pg.PlotWidget(title="Dock 8 plot")
-w8.plot(np.random.normal(size=100))
+## Sky
+w8 = pg.PlotWidget(title="Dock 8 plot",labels={'left': 'median sky counts', 'bottom': 'frame #'})
+sky = pg.PlotCurveItem()
+w8.addItem(sky)
 d8.addWidget(w8)
+
+## Seeing
+w9 = pg.PlotWidget(title="Dock 9 plot",labels={'left': 'seeing (")', 'bottom': 'frame #'})
+seeing = pg.PlotCurveItem()
+w9.addItem(seeing) #Placeholder for now
+d9.addWidget(w9)
 
 
 ## Fourier Transform
@@ -495,7 +505,8 @@ d5.addWidget(w5)
 
 ## Show the program!
 win.show()
-
+win.raise_()
+#win.activateWindow()
 
 
 
@@ -806,7 +817,7 @@ def nextframe():
 #Set up timer loop for showing old data as simulated data
 timer2 = pg.QtCore.QTimer()
 timer2.timeout.connect(nextframe)
-timer2.start(200)
+timer2.start(2000)
     
 
 def dophot(i):
@@ -857,15 +868,10 @@ def dophot(i):
     #yay.  This deserves to all be checked very carefully, especially since the gain only affects uncertainty and not overall counts.
 
 
-#define smoothing function For smoothed light curve
-winsize = 5.#win size in frames
-def smooth(flux, window_size):
-    #make sure flux is longer than window_size
-    if len(flux) < window_size:
-        return flux
-    else:
-        window = np.ones(int(window_size))/float(window_size)
-        return np.convolve(flux, window, 'same')
+#define smoothing parameters For smoothed light curve for scipy.signal.savgol_filter
+#winsize = 11.#win size in frames (must be odd)
+sigma=3.
+    
 
 
 #Update display.
@@ -881,29 +887,24 @@ def updatelcs(i=framenum):
     s1.setData(times[goodmask[:i]],goodfluxnorm)
     #s2.setData(times[badmask[:i]],targdivided[badmask[:i]])
     l1.setData(times[goodmask[:i]],goodfluxnorm)
-    goodfluxnormsmooth=smooth(goodfluxnorm,winsize)
-    ss1.setData(times[goodmask[:i]],goodfluxnormsmooth)
-    sl1.setData(times[goodmask[:i]],goodfluxnormsmooth)
-    xnew = np.arange(min(times[goodmask[:i]]),max(times[goodmask[:i]]))
     #Fourier Transform
+    interped = interp1d(times[goodmask[:i]],goodfluxnorm-1.)
+    xnew = np.arange(min(times[goodmask[:i]]),max(times[goodmask[:i]]))
+    ynew = interped(xnew)
     if len(xnew) > 1 and len(xnew) % 2 == 0:
-        tofourier = interp1d(times[goodmask[:i]],goodfluxnorm-1.)
-        xnew = np.arange(min(times[goodmask[:i]]),max(times[goodmask[:i]]))
-        ynew = tofourier(xnew)
         f,H = FT_continuous(xnew,ynew)
         H=2*np.sqrt(H.real**2 + H.imag**2.)/len(ynew)
         ft.setData(f[len(f)/2.:],H[len(f)/2.:])
+    #Smoothed LC
+    fluxsmoothed=filters.gaussian_filter1d(ynew,sigma=sigma)
+    ss1.setData(xnew,fluxsmoothed)
+    #sl1.setData(times[goodmask[:i]],fluxsmoothed[goodmask[:i]])
     #Raw Counts:
     for i,splot in enumerate(rawcounts): splot.setData(times,photresults[:,i,apsizeindex])
+    #Sky brightness
+    sky.setData(times,backmed)
 
 
-
-
-#From previous data streaming example
-#newdata()
-#timer = pg.QtCore.QTimer()
-#timer.timeout.connect(newdata)
-#timer.start(1000)
 
 
 
