@@ -567,7 +567,7 @@ displayimg=[]
 #Keep track of "Bad" points
 bad=[]
 #Elapsed timestamps
-#times=[]
+rawtimes=[] #start of timestamp
 #Search radius (box for now), improve later
 pixdist=10 #(super)pixels
 #List of median background counts:
@@ -607,11 +607,23 @@ def readspe():
     spe = read_spe.File(spefile)
     binning = 1024/spe.get_frame(0)[0].shape[0]
     log(str(spe.get_num_frames()) + ' frames read in.')
+    log('Inferred exposure time: '+str(getexptime(spe))+' s')
     if hasattr(spe, 'footer_metadata'): log('SPE file has footer.')
+
+#Determine the exposuretime of a SPE file without a footer
+def getexptime(thisspe):
+    #Input open SPE file
+    #don't read lots of frames in large files
+    numtoread = min([thisspe.get_num_frames(),10])
+    tstamps = np.zeros(numtoread)
+    for f in range(numtoread): 
+        tstamps[f] = spe.get_frame(f)[1]['time_stamp_exposure_started']
+    timediff = tstamps[1:numtoread]-tstamps[:numtoread-1]
+    return np.round(np.median(timediff/1e6))
 
 #Define all the stuff that needs to be done to each incoming frame
 def processframe(i=0):
-    global img,displayimg,backmed,backvar,framenum
+    global img,displayimg,rawtimes,backmed,backvar,framenum
     (thisframe,thistime) = spe.get_frame(i)
     #calibrate (doesn't do anything if calibration frames are not available):
     if darkExists: thisframe=(thisframe-dark)
@@ -621,14 +633,14 @@ def processframe(i=0):
     if i <= framenum: #replace
         log('Re-processing frame '+str(i)+' of '+str(framenum))
         img[i]=np.transpose(thisframe)
-        #times[i]=thistime
+        rawtimes[i]=thistime['time_stamp_exposure_started']
         backgroundmed,backgroundvar=charbackground(i=i)
         backmed[i]=backgroundmed
         backvar[i]=backgroundvar
     else: #append
         log('Processing frame '+str(i)+' of '+str(framenum))
         img.append(np.transpose(thisframe))
-        #times.append(thistime)
+        rawtimes.append(thistime['time_stamp_exposure_started'])
         backgroundmed,backgroundvar=charbackground(i=i)
         backmed.append(backgroundmed)
         backvar.append(backgroundvar)
