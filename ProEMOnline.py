@@ -638,7 +638,7 @@ def processframe(i=0):
     imgvals = newdisplayimg.flatten()
     img99percentile = np.percentile(imgvals,99)
     newdisplayimg[newdisplayimg > img99percentile] = img99percentile
-    log("Framenum: "+str(framenum),3)
+    log("Framenum: "+str(framenum),2)
     #Replace if this frame already exists, otherwise append
     if i <= framenum: #replace
         displayimg[i]=newdisplayimg
