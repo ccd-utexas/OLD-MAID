@@ -175,7 +175,7 @@ class WithMenu(QtGui.QMainWindow):
         '''
         fname = QtGui.QFileDialog.getOpenFileName(self, 'Open SPE file', 
                 defaultdir,filter='Data (*.spe)')
-        print fname
+        print fname, fname[-4:]
         if fname[-4:]=='.spe':
             log("Opening file "+fname,1)
             #self.spefile = fname #I don't think this line does anything.
@@ -506,6 +506,7 @@ d5.addWidget(w5)
 ## Show the program!
 win.show()
 win.raise_()
+
 #win.activateWindow()
 
 
