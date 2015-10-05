@@ -175,9 +175,12 @@ class WithMenu(QtGui.QMainWindow):
         '''
         fname = QtGui.QFileDialog.getOpenFileName(self, 'Open SPE file', 
                 defaultdir,filter='Data (*.spe)')
+        log(type(fnames))
         log("Opening file "+fname,1)
-        stage1(str(fname))
         
+
+        stage1(str(fname))
+
         
         
     #Load Dark frames
