@@ -176,7 +176,7 @@ class WithMenu(QtGui.QMainWindow):
         fname = QtGui.QFileDialog.getOpenFileName(self, 'Open SPE file', 
                 defaultdir,filter='Data (*.spe)')
         log(type(fname))
-        log("Opening file "+fname,1)
+        log(fname,1)
         
 
         stage1(str(fname))
