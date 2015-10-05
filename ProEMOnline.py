@@ -175,13 +175,9 @@ class WithMenu(QtGui.QMainWindow):
         '''
         fname = QtGui.QFileDialog.getOpenFileName(self, 'Open SPE file', 
                 defaultdir,filter='Data (*.spe)')
-        print fname, fname[-4:]
-        if fname[-4:]=='.spe':
-            log("Opening file "+fname,1)
-            #self.spefile = fname #I don't think this line does anything.
-            #This needs to trigger a major chain of events
-            stage1(str(fname))
-        else: log("Invalid file type (must be SPE).",3)
+        log("Opening file "+fname,1)
+        stage1(str(fname))
+        
         
         
     #Load Dark frames
