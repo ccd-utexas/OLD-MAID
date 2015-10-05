@@ -567,7 +567,7 @@ displayimg=[]
 #Keep track of "Bad" points
 bad=[]
 #Elapsed timestamps
-times=[]
+#times=[]
 #Search radius (box for now), improve later
 pixdist=10 #(super)pixels
 #List of median background counts:
@@ -611,7 +611,7 @@ def readspe():
 
 #Define all the stuff that needs to be done to each incoming frame
 def processframe(i=0):
-    global img,displayimg,times,backmed,backvar,framenum
+    global img,displayimg,backmed,backvar,framenum
     (thisframe,thistime) = spe.get_frame(i)
     #calibrate (doesn't do anything if calibration frames are not available):
     if darkExists: thisframe=(thisframe-dark)
@@ -621,14 +621,14 @@ def processframe(i=0):
     if i <= framenum: #replace
         log('Re-processing frame '+str(i)+' of '+str(framenum))
         img[i]=np.transpose(thisframe)
-        times[i]=thistime
+        #times[i]=thistime
         backgroundmed,backgroundvar=charbackground(i=i)
         backmed[i]=backgroundmed
         backvar[i]=backgroundvar
     else: #append
         log('Processing frame '+str(i)+' of '+str(framenum))
         img.append(np.transpose(thisframe))
-        times.append(thistime)
+        #times.append(thistime)
         backgroundmed,backgroundvar=charbackground(i=i)
         backmed.append(backgroundmed)
         backvar.append(backgroundvar)
@@ -639,7 +639,7 @@ def processframe(i=0):
     imgvals = newdisplayimg.flatten()
     img99percentile = np.percentile(imgvals,99)
     newdisplayimg[newdisplayimg > img99percentile] = img99percentile
-    log("Framenum: "+str(framenum),3)
+    log("Framenum: "+str(framenum),2)
     #Replace if this frame already exists, otherwise append
     if i <= framenum: #replace
         displayimg[i]=newdisplayimg
@@ -812,7 +812,7 @@ def nextframe():
         #Perform photometry
         dophot(i=framenum)
         #Update light curves  
-        updatelcs()
+        updatelcs(i=framenum)
         
 
 #Set up timer loop for showing old data as simulated data
@@ -858,7 +858,7 @@ def dophot(i):
             #phot = aperture_photometry(img[i]-np.median(img),aperture)
             phot = aperture_photometry(img[i]-backmed[i],aperture)
             thisphotometry[n,j]=phot['aperture_sum'][0]
-    print "photometry ",thisphotometry
+    #print "photometry ",thisphotometry
     if i == 0:
         photresults = np.array([thisphotometry])
     else:
@@ -876,21 +876,25 @@ sigma=3.
 
 
 #Update display.
-def updatelcs(i=framenum):
+def updatelcs(i):
     #Identify which points to include/exclude, up to frame i
-    goodmask=np.ones(framenum, np.bool)
-    goodmask[bad] = 0
-    badmask = np.zeros(framenum, np.bool)
-    badmask[bad] = 1
-    targdivided = photresults[:,0,apsizeindex]/photresults[:,1,apsizeindex] #currently only using one comp star and aperture size set to 3 pix.
-    times = np.arange(photresults.shape[0])#Placeholder for real timestamps.
-    goodfluxnorm=targdivided[goodmask[:i]]/np.mean(targdivided[goodmask[:i]])
-    s1.setData(times[goodmask[:i]],goodfluxnorm)
+    print i,framenum, len(photresults), photresults.shape
+    goodmask=np.ones(i+1, np.bool)
+    goodmask[bad] = False
+    badmask = np.zeros(i+1, np.bool)
+    badmask[bad] = True
+    targdivided = photresults[:i+1,0,apsizeindex]/photresults[:i+1,1,apsizeindex] #currently only using one comp star and aperture size set to 3 pix.
+    times = np.arange(i+1)#Placeholder for real timestamps.
+    goodfluxnorm=targdivided[goodmask[:i+1]]/np.mean(targdivided[goodmask[:i+1]])
+    s1.setData(times[goodmask[:i+1]],goodfluxnorm)
     #s2.setData(times[badmask[:i]],targdivided[badmask[:i]])
-    l1.setData(times[goodmask[:i]],goodfluxnorm)
+    l1.setData(times[goodmask[:i+1]],goodfluxnorm)
     #Fourier Transform
-    interped = interp1d(times[goodmask[:i]],goodfluxnorm-1.)
-    xnew = np.arange(min(times[goodmask[:i]]),max(times[goodmask[:i]]))
+    print np.shape(times[goodmask[:i+1]]),np.shape(goodfluxnorm-1.)
+    print times[goodmask[:i+1]], type(times[goodmask[:i+1]])
+    print goodfluxnorm-1., type(goodfluxnorm-1.)
+    interped = interp1d(times[goodmask[:i+1]],goodfluxnorm-1.)
+    xnew = np.arange(min(times[goodmask[:i+1]]),max(times[goodmask[:i+1]]))
     ynew = interped(xnew)
     if len(xnew) > 1 and len(xnew) % 2 == 0:
         f,H = FT_continuous(xnew,ynew)
@@ -901,7 +905,7 @@ def updatelcs(i=framenum):
     ss1.setData(xnew,fluxsmoothed)
     #sl1.setData(times[goodmask[:i]],fluxsmoothed[goodmask[:i]])
     #Raw Counts:
-    for i,splot in enumerate(rawcounts): splot.setData(times,photresults[:,i,apsizeindex])
+    for j,splot in enumerate(rawcounts): splot.setData(times,photresults[:,j,apsizeindex])
     #Sky brightness
     sky.setData(times,backmed)
 
