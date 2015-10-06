@@ -141,6 +141,7 @@ class WithMenu(QtGui.QMainWindow):
         #Interactions menu
         interactionsMenu = menubar.addMenu('Interact')
         interactionsMenu.addAction(restorePoints)
+        self.changeApertureMenu = interactionsMenu.addMenu('Select Aperture Size')
         #Layout Menu
         layoutMenu = menubar.addMenu('Layout')
         layoutMenu.addAction(saveLayout)
@@ -269,7 +270,13 @@ class WithMenu(QtGui.QMainWindow):
     def restorePts(self):
         global bad
         bad=[]
-        
+    
+    #Set up aperture size menu options
+    def setupApsizeMenu(self): 
+        for size in apsizes:
+            self.changeApertureMenu.addAction(str(size)+' pixels',lambda s=size: setApSize(s))
+            
+    
     #Run Photometry
     def run(self):
         #Do aperture photometry on selected stars
@@ -602,6 +609,7 @@ def stage1(fname):
     #Select stars:
     selectstars()
     #spe.close() #In real version we'll close spe
+    win.setupApsizeMenu()
 
 #Helper functions, useful here and elsewhere
 def readspe():
@@ -702,7 +710,7 @@ def displayFrame(i=framenum,autoscale=False,markstars=True):
     #Draw position circles:
     if markstars and i <= len(stars) and len(stars) > 0:
         targs.setData([p[0] for p in stars[i]],[p[1] for p in stars[i]])
-        targs.setSize(apsizes[apsizeindex])
+        targs.setSize(2.*apsizes[apsizeindex])
         targs.setPen(pencolors[0:numstars])
         
         
@@ -714,9 +722,6 @@ def selectstars():
     '''
     global selectingstars
     selectingstars = True
-    #Is this the inital selection of stars?
-    if numstars == 0:
-        x=1
     
 
 def improvecoords(x,y,i=w5.currentIndex,pixdist=pixdist,fwhm=8.0,sigma=5.):
@@ -791,10 +796,19 @@ def setNumStars(num):
 #Function to loop through and do the photometry
 
 #Aperture details (provide a way to change these!)
-apsizes=np.arange(1,11) #for now, for testing.   <---- Update later
+apsizes=np.arange(1,11)
 apsizeindex=4
 r_in = 16.  #inner sky annulus radius #change in terms of binning eventually
 r_out = 24. #outer sky annulus radius #change in terms of binning eventually
+def setApSize(size):
+    global apsizeindex
+    log("new apsize assigned: "+str(size))
+    if size in apsizes:
+        apsizeindex=np.where(apsizes == size)[0][0]
+        targs.setSize(2*size)# Currently doesn't update until next click/frame
+        if stage > 1: 
+            updatelcs(i=framenum)
+
 
 #Phot results: variables to hold light curves and uncertainties
 photresults=np.array([])
@@ -831,7 +845,8 @@ def nextframe():
         displayFrame(i=framenum,markstars=True)
         #Perform photometry
         dophot(i=framenum)
-        #Update light curves  
+        #Update light curves 
+        log("Apsizeindex: "+str(apsizeindex),2)
         updatelcs(i=framenum)
         
 
