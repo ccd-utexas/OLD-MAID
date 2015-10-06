@@ -386,7 +386,7 @@ def log(text,level=0):
 
 ## Light Curve
 # It's a plot
-w6 = pg.PlotWidget(title="Dock 6 plot",labels={'left': 'rel. flux', 'bottom': 'frame #'})
+w6 = pg.PlotWidget(title="Dock 6 plot",labels={'left': 'rel. flux', 'bottom': 'time (s)'})
 # Set up plot components
 # Raw points
 s1 = pg.ScatterPlotItem(brush=(255,0,0), pen='w',symbol='o')
@@ -405,10 +405,10 @@ def clicked(plot, points):
     global bad
     #print("clicked points", points)
     for p in points:
-        if p.pos()[0] in bad:
-            bad.remove(p.pos()[0])
+        if p.pos()[0]/exptime in bad:
+            bad.remove(p.pos()[0]/exptime)
         else:
-            bad.append(p.pos()[0])
+            bad.append(p.pos()[0]/exptime)
     update()
     
 s1.sigClicked.connect(clicked)
@@ -416,7 +416,7 @@ s1.sigClicked.connect(clicked)
 
 
 ## Smoothed Light Curve
-w4 = pg.PlotWidget(title="Dock 4 plot",labels={'left': 'smoothed flux', 'bottom': 'frame #'})
+w4 = pg.PlotWidget(title="Dock 4 plot",labels={'left': 'smoothed flux', 'bottom': 'time (s)'})
 ss1 = pg.ScatterPlotItem(brush=(255,0,0), pen='w',symbol='o')
 sl1 = pg.PlotCurveItem()
 w4.addItem(ss1)
@@ -431,20 +431,20 @@ d7.addWidget(w7)
 rawcounts=[]
 
 ## Sky
-w8 = pg.PlotWidget(title="Dock 8 plot",labels={'left': 'median sky counts', 'bottom': 'frame #'})
+w8 = pg.PlotWidget(title="Dock 8 plot",labels={'left': 'median sky counts', 'bottom': 'time (s)'})
 sky = pg.PlotCurveItem()
 w8.addItem(sky)
 d8.addWidget(w8)
 
 ## Seeing
-w9 = pg.PlotWidget(title="Dock 9 plot",labels={'left': 'seeing (")', 'bottom': 'frame #'})
+w9 = pg.PlotWidget(title="Dock 9 plot",labels={'left': 'seeing (")', 'bottom': 'time (s)'})
 seeing = pg.PlotCurveItem()
 w9.addItem(seeing) #Placeholder for now
 d9.addWidget(w9)
 
 
 ## Fourier Transform
-w3 = pg.PlotWidget(title="Fourier Transform",labels={'left': 'amplitude', 'bottom': 'freq (per frame)'})
+w3 = pg.PlotWidget(title="Fourier Transform",labels={'left': 'amplitude (mma)', 'bottom': 'freq (muHz)'})
 ft = w3.plot(pen='y')
 d3.addWidget(w3)
 
@@ -898,36 +898,32 @@ sigma=3.
 #Update display.
 def updatelcs(i):
     #Identify which points to include/exclude, up to frame i
-    print i,framenum, len(photresults), photresults.shape
     goodmask=np.ones(i+1, np.bool)
     goodmask[bad] = False
     badmask = np.zeros(i+1, np.bool)
     badmask[bad] = True
     targdivided = photresults[:i+1,0,apsizeindex]/photresults[:i+1,1,apsizeindex] #currently only using one comp star and aperture size set to 3 pix.
-    times = np.arange(i+1)#Placeholder for real timestamps.
+    times = np.arange(i+1)#Multiply by exptime for timestamps
     goodfluxnorm=targdivided[goodmask[:i+1]]/np.mean(targdivided[goodmask[:i+1]])
-    s1.setData(times[goodmask[:i+1]],goodfluxnorm)
+    s1.setData(exptime*times[goodmask[:i+1]],goodfluxnorm)
     #s2.setData(times[badmask[:i]],targdivided[badmask[:i]])
-    l1.setData(times[goodmask[:i+1]],goodfluxnorm)
+    l1.setData(exptime*times[goodmask[:i+1]],goodfluxnorm)
     #Fourier Transform
-    print np.shape(times[goodmask[:i+1]]),np.shape(goodfluxnorm-1.)
-    print times[goodmask[:i+1]], type(times[goodmask[:i+1]])
-    print goodfluxnorm-1., type(goodfluxnorm-1.)
-    interped = interp1d(times[goodmask[:i+1]],goodfluxnorm-1.)
-    xnew = np.arange(min(times[goodmask[:i+1]]),max(times[goodmask[:i+1]]))
+    interped = interp1d(exptime*times[goodmask[:i+1]],goodfluxnorm-1.)
+    xnew = np.arange(exptime*min(times[goodmask[:i+1]]),exptime*max(times[goodmask[:i+1]]),exptime)
     ynew = interped(xnew)
     if len(xnew) > 1 and len(xnew) % 2 == 0:
         f,H = FT_continuous(xnew,ynew)
         H=2*np.sqrt(H.real**2 + H.imag**2.)/len(ynew)
-        ft.setData(f[len(f)/2.:],H[len(f)/2.:])
+        ft.setData(1e6*f[len(f)/2.:],1e3*H[len(f)/2.:])
     #Smoothed LC
     fluxsmoothed=filters.gaussian_filter1d(ynew,sigma=sigma)
     ss1.setData(xnew,fluxsmoothed)
     #sl1.setData(times[goodmask[:i]],fluxsmoothed[goodmask[:i]])
     #Raw Counts:
-    for j,splot in enumerate(rawcounts): splot.setData(times,photresults[:,j,apsizeindex])
+    for j,splot in enumerate(rawcounts): splot.setData(exptime*times,photresults[:,j,apsizeindex])
     #Sky brightness
-    sky.setData(times,backmed)
+    sky.setData(exptime*times,backmed)
 
 
 
