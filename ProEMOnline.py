@@ -35,6 +35,7 @@ from astropy.stats import biweight_location, biweight_midvariance
 from photutils import daofind
 from photutils import CircularAperture, CircularAnnulus, aperture_photometry
 from pyqtgraph.dockarea import *
+from bs4 import BeautifulSoup
 # Local modules.
 import read_spe
 
@@ -140,6 +141,9 @@ class WithMenu(QtGui.QMainWindow):
         #Interactions menu
         interactionsMenu = menubar.addMenu('Interact')
         interactionsMenu.addAction(restorePoints)
+        self.changeApertureMenu = interactionsMenu.addMenu('Select Aperture Size')
+        self.changeCompStarMenu = interactionsMenu.addMenu('Select Comp Star for Division')
+        
         #Layout Menu
         layoutMenu = menubar.addMenu('Layout')
         layoutMenu.addAction(saveLayout)
@@ -267,8 +271,19 @@ class WithMenu(QtGui.QMainWindow):
     #Restore previously "bad" points
     def restorePts(self):
         global bad
+        log("Deselecting "+str(len(bad))+" points.")
         bad=[]
-        
+    
+    #Set up aperture size menu options
+    def setupApsizeMenu(self): 
+        for size in apsizes:
+            self.changeApertureMenu.addAction(str(size)+' pixels',lambda s=size: setApSize(s))
+    
+    #Set up aperture size menu options
+    def addCompStarOption(self,i): 
+        self.changeCompStarMenu.addAction('Comp Star #'+str(i),lambda s=i: setCompStar(s))
+            
+    
     #Run Photometry
     def run(self):
         #Do aperture photometry on selected stars
@@ -385,7 +400,7 @@ def log(text,level=0):
 
 ## Light Curve
 # It's a plot
-w6 = pg.PlotWidget(title="Dock 6 plot",labels={'left': 'rel. flux', 'bottom': 'frame #'})
+w6 = pg.PlotWidget(title="Dock 6 plot",labels={'left': 'rel. flux', 'bottom': 'time (s)'})
 # Set up plot components
 # Raw points
 s1 = pg.ScatterPlotItem(brush=(255,0,0), pen='w',symbol='o')
@@ -404,18 +419,18 @@ def clicked(plot, points):
     global bad
     #print("clicked points", points)
     for p in points:
-        if p.pos()[0] in bad:
-            bad.remove(p.pos()[0])
+        if p.pos()[0]/exptime in bad:
+            bad.remove(p.pos()[0]/exptime)
         else:
-            bad.append(p.pos()[0])
-    update()
+            bad.append(p.pos()[0]/exptime)
+    updatelcs(framenum)
     
 s1.sigClicked.connect(clicked)
 #s2.sigClicked.connect(clicked)
 
 
 ## Smoothed Light Curve
-w4 = pg.PlotWidget(title="Dock 4 plot",labels={'left': 'smoothed flux', 'bottom': 'frame #'})
+w4 = pg.PlotWidget(title="Dock 4 plot",labels={'left': 'smoothed flux', 'bottom': 'time (s)'})
 ss1 = pg.ScatterPlotItem(brush=(255,0,0), pen='w',symbol='o')
 sl1 = pg.PlotCurveItem()
 w4.addItem(ss1)
@@ -430,20 +445,20 @@ d7.addWidget(w7)
 rawcounts=[]
 
 ## Sky
-w8 = pg.PlotWidget(title="Dock 8 plot",labels={'left': 'median sky counts', 'bottom': 'frame #'})
+w8 = pg.PlotWidget(title="Dock 8 plot",labels={'left': 'median sky counts', 'bottom': 'time (s)'})
 sky = pg.PlotCurveItem()
 w8.addItem(sky)
 d8.addWidget(w8)
 
 ## Seeing
-w9 = pg.PlotWidget(title="Dock 9 plot",labels={'left': 'seeing (")', 'bottom': 'frame #'})
+w9 = pg.PlotWidget(title="Dock 9 plot",labels={'left': 'seeing (")', 'bottom': 'time (s)'})
 seeing = pg.PlotCurveItem()
 w9.addItem(seeing) #Placeholder for now
 d9.addWidget(w9)
 
 
 ## Fourier Transform
-w3 = pg.PlotWidget(title="Fourier Transform",labels={'left': 'amplitude', 'bottom': 'freq (per frame)'})
+w3 = pg.PlotWidget(title="Fourier Transform",labels={'left': 'amplitude (mma)', 'bottom': 'freq (muHz)'})
 ft = w3.plot(pen='y')
 d3.addWidget(w3)
 
@@ -469,7 +484,8 @@ def click(event):#Linked to image click event
         #round originals so original position *within* pixel doesn't affect answer
         newcoords=[np.floor(x)+dx,np.floor(y)+dy]
         stars.append(newcoords)
-        #print 'final coords: ',newcoords
+        #make menuoption for comp star selection
+        if len(stars) > 1: win.addCompStarOption(len(stars)-1)
         #Mark stars in image display
         targs.setData([p[0] for p in stars],[p[1] for p in stars])
         targs.setPen(pencolors[0:len(stars)])
@@ -544,6 +560,8 @@ log("Open SPE file to begin analysis.",1)
 spefile = ''
 #SPE Data
 spe=[]
+#Exposure time for science frames
+exptime=0.
 #Dark data
 dark = []
 darkExists=False
@@ -567,7 +585,7 @@ displayimg=[]
 #Keep track of "Bad" points
 bad=[]
 #Elapsed timestamps
-times=[]
+rawtimes=[] #start of timestamp
 #Search radius (box for now), improve later
 pixdist=10 #(super)pixels
 #List of median background counts:
@@ -599,19 +617,37 @@ def stage1(fname):
     #Select stars:
     selectstars()
     #spe.close() #In real version we'll close spe
+    win.setupApsizeMenu()
 
 #Helper functions, useful here and elsewhere
 def readspe():
-    global spe, binning
+    global spe, binning, exptime
     #Read in the spe file and print details to the log
     spe = read_spe.File(spefile)
     binning = 1024/spe.get_frame(0)[0].shape[0]
     log(str(spe.get_num_frames()) + ' frames read in.')
-    if hasattr(spe, 'footer_metadata'): log('SPE file has footer.')
+    exptime=getexptime(spe)
+    log('Inferred exposure time: '+str(exptime)+' s')
+    if hasattr(spe, 'footer_metadata'): 
+        log('SPE file has footer.')
+        exptime=np.round(float(BeautifulSoup(spe.footer_metadata, "xml").find(name='ExposureTime').text)/1000.)
+        log('Exposute time from footer: '+str(exptime)+' s')
+        
+
+#Determine the exposuretime of a SPE file without a footer
+def getexptime(thisspe):
+    #Input open SPE file
+    #don't read lots of frames in large files
+    numtoread = min([thisspe.get_num_frames(),11])
+    tstamps = np.zeros(numtoread)
+    for f in range(numtoread): 
+        tstamps[f] = spe.get_frame(f)[1]['time_stamp_exposure_started']
+    timediff = tstamps[1:numtoread]-tstamps[:numtoread-1]
+    return np.round(np.median(timediff/1e6))
 
 #Define all the stuff that needs to be done to each incoming frame
 def processframe(i=0):
-    global img,displayimg,times,backmed,backvar,framenum
+    global img,displayimg,rawtimes,backmed,backvar,framenum
     (thisframe,thistime) = spe.get_frame(i)
     #calibrate (doesn't do anything if calibration frames are not available):
     if darkExists: thisframe=(thisframe-dark)
@@ -621,14 +657,14 @@ def processframe(i=0):
     if i <= framenum: #replace
         log('Re-processing frame '+str(i)+' of '+str(framenum))
         img[i]=np.transpose(thisframe)
-        times[i]=thistime
+        rawtimes[i]=thistime['time_stamp_exposure_started']
         backgroundmed,backgroundvar=charbackground(i=i)
         backmed[i]=backgroundmed
         backvar[i]=backgroundvar
     else: #append
         log('Processing frame '+str(i)+' of '+str(framenum))
         img.append(np.transpose(thisframe))
-        times.append(thistime)
+        rawtimes.append(thistime['time_stamp_exposure_started'])
         backgroundmed,backgroundvar=charbackground(i=i)
         backmed.append(backgroundmed)
         backvar.append(backgroundvar)
@@ -639,7 +675,7 @@ def processframe(i=0):
     imgvals = newdisplayimg.flatten()
     img99percentile = np.percentile(imgvals,99)
     newdisplayimg[newdisplayimg > img99percentile] = img99percentile
-    log("Framenum: "+str(framenum),3)
+    log("Framenum: "+str(framenum),2)
     #Replace if this frame already exists, otherwise append
     if i <= framenum: #replace
         displayimg[i]=newdisplayimg
@@ -682,7 +718,7 @@ def displayFrame(i=framenum,autoscale=False,markstars=True):
     #Draw position circles:
     if markstars and i <= len(stars) and len(stars) > 0:
         targs.setData([p[0] for p in stars[i]],[p[1] for p in stars[i]])
-        targs.setSize(apsizes[apsizeindex])
+        targs.setSize(2.*apsizes[apsizeindex])
         targs.setPen(pencolors[0:numstars])
         
         
@@ -694,9 +730,6 @@ def selectstars():
     '''
     global selectingstars
     selectingstars = True
-    #Is this the inital selection of stars?
-    if numstars == 0:
-        x=1
     
 
 def improvecoords(x,y,i=w5.currentIndex,pixdist=pixdist,fwhm=8.0,sigma=5.):
@@ -771,10 +804,27 @@ def setNumStars(num):
 #Function to loop through and do the photometry
 
 #Aperture details (provide a way to change these!)
-apsizes=np.arange(1,11) #for now, for testing.   <---- Update later
+apsizes=np.arange(1,11)
 apsizeindex=4
 r_in = 16.  #inner sky annulus radius #change in terms of binning eventually
 r_out = 24. #outer sky annulus radius #change in terms of binning eventually
+def setApSize(size):
+    global apsizeindex
+    log("Aperture size set to "+str(size)+" pixels.",1)
+    log("(Updates on next frame.)")
+    if size in apsizes:
+        apsizeindex=np.where(apsizes == size)[0][0]
+        targs.setSize(2*size)# Currently doesn't update until next click/frame
+        if stage > 1: 
+            updatelcs(i=framenum)
+
+compstar = 1 #which star to divide by
+def setCompStar(s):
+    global compstar
+    compstar = s
+    log("Now dividing by comparsion star #"+str(s),1)
+    updatelcs(framenum)
+
 
 #Phot results: variables to hold light curves and uncertainties
 photresults=np.array([])
@@ -811,8 +861,9 @@ def nextframe():
         displayFrame(i=framenum,markstars=True)
         #Perform photometry
         dophot(i=framenum)
-        #Update light curves  
-        updatelcs()
+        #Update light curves 
+        log("Apsizeindex: "+str(apsizeindex),2)
+        updatelcs(i=framenum)
         
 
 #Set up timer loop for showing old data as simulated data
@@ -858,7 +909,7 @@ def dophot(i):
             #phot = aperture_photometry(img[i]-np.median(img),aperture)
             phot = aperture_photometry(img[i]-backmed[i],aperture)
             thisphotometry[n,j]=phot['aperture_sum'][0]
-    print "photometry ",thisphotometry
+    #print "photometry ",thisphotometry
     if i == 0:
         photresults = np.array([thisphotometry])
     else:
@@ -876,34 +927,34 @@ sigma=3.
 
 
 #Update display.
-def updatelcs(i=framenum):
+def updatelcs(i):
     #Identify which points to include/exclude, up to frame i
-    goodmask=np.ones(framenum, np.bool)
-    goodmask[bad] = 0
-    badmask = np.zeros(framenum, np.bool)
-    badmask[bad] = 1
-    targdivided = photresults[:,0,apsizeindex]/photresults[:,1,apsizeindex] #currently only using one comp star and aperture size set to 3 pix.
-    times = np.arange(photresults.shape[0])#Placeholder for real timestamps.
-    goodfluxnorm=targdivided[goodmask[:i]]/np.mean(targdivided[goodmask[:i]])
-    s1.setData(times[goodmask[:i]],goodfluxnorm)
+    goodmask=np.ones(i+1, np.bool)
+    goodmask[bad] = False
+    badmask = np.zeros(i+1, np.bool)
+    badmask[bad] = True
+    targdivided = photresults[:i+1,0,apsizeindex]/photresults[:i+1,compstar,apsizeindex]
+    times = np.arange(i+1)#Multiply by exptime for timestamps
+    goodfluxnorm=targdivided[goodmask[:i+1]]/np.mean(targdivided[goodmask[:i+1]])
+    s1.setData(exptime*times[goodmask[:i+1]],goodfluxnorm)
     #s2.setData(times[badmask[:i]],targdivided[badmask[:i]])
-    l1.setData(times[goodmask[:i]],goodfluxnorm)
+    l1.setData(exptime*times[goodmask[:i+1]],goodfluxnorm)
     #Fourier Transform
-    interped = interp1d(times[goodmask[:i]],goodfluxnorm-1.)
-    xnew = np.arange(min(times[goodmask[:i]]),max(times[goodmask[:i]]))
+    interped = interp1d(exptime*times[goodmask[:i+1]],goodfluxnorm-1.)
+    xnew = np.arange(exptime*min(times[goodmask[:i+1]]),exptime*max(times[goodmask[:i+1]]),exptime)
     ynew = interped(xnew)
     if len(xnew) > 1 and len(xnew) % 2 == 0:
         f,H = FT_continuous(xnew,ynew)
         H=2*np.sqrt(H.real**2 + H.imag**2.)/len(ynew)
-        ft.setData(f[len(f)/2.:],H[len(f)/2.:])
+        ft.setData(1e6*f[len(f)/2.:],1e3*H[len(f)/2.:])
     #Smoothed LC
     fluxsmoothed=filters.gaussian_filter1d(ynew,sigma=sigma)
     ss1.setData(xnew,fluxsmoothed)
     #sl1.setData(times[goodmask[:i]],fluxsmoothed[goodmask[:i]])
     #Raw Counts:
-    for i,splot in enumerate(rawcounts): splot.setData(times,photresults[:,i,apsizeindex])
+    for j,splot in enumerate(rawcounts): splot.setData(exptime*times,photresults[:,j,apsizeindex])
     #Sky brightness
-    sky.setData(times,backmed)
+    sky.setData(exptime*times,backmed)
 
 
 
