@@ -142,6 +142,8 @@ class WithMenu(QtGui.QMainWindow):
         interactionsMenu = menubar.addMenu('Interact')
         interactionsMenu.addAction(restorePoints)
         self.changeApertureMenu = interactionsMenu.addMenu('Select Aperture Size')
+        self.changeCompStarMenu = interactionsMenu.addMenu('Select Comp Star for Division')
+        
         #Layout Menu
         layoutMenu = menubar.addMenu('Layout')
         layoutMenu.addAction(saveLayout)
@@ -269,12 +271,17 @@ class WithMenu(QtGui.QMainWindow):
     #Restore previously "bad" points
     def restorePts(self):
         global bad
+        log("Deselecting "+str(len(bad))+" points.")
         bad=[]
     
     #Set up aperture size menu options
     def setupApsizeMenu(self): 
         for size in apsizes:
             self.changeApertureMenu.addAction(str(size)+' pixels',lambda s=size: setApSize(s))
+    
+    #Set up aperture size menu options
+    def addCompStarOption(self,i): 
+        self.changeCompStarMenu.addAction('Comp Star #'+str(i),lambda s=i: setCompStar(s))
             
     
     #Run Photometry
@@ -416,7 +423,7 @@ def clicked(plot, points):
             bad.remove(p.pos()[0]/exptime)
         else:
             bad.append(p.pos()[0]/exptime)
-    update()
+    updatelcs(framenum)
     
 s1.sigClicked.connect(clicked)
 #s2.sigClicked.connect(clicked)
@@ -477,7 +484,8 @@ def click(event):#Linked to image click event
         #round originals so original position *within* pixel doesn't affect answer
         newcoords=[np.floor(x)+dx,np.floor(y)+dy]
         stars.append(newcoords)
-        #print 'final coords: ',newcoords
+        #make menuoption for comp star selection
+        if len(stars) > 1: win.addCompStarOption(len(stars)-1)
         #Mark stars in image display
         targs.setData([p[0] for p in stars],[p[1] for p in stars])
         targs.setPen(pencolors[0:len(stars)])
@@ -802,12 +810,20 @@ r_in = 16.  #inner sky annulus radius #change in terms of binning eventually
 r_out = 24. #outer sky annulus radius #change in terms of binning eventually
 def setApSize(size):
     global apsizeindex
-    log("new apsize assigned: "+str(size))
+    log("Aperture size set to "+str(size)+" pixels.",1)
+    log("(Updates on next frame.)")
     if size in apsizes:
         apsizeindex=np.where(apsizes == size)[0][0]
         targs.setSize(2*size)# Currently doesn't update until next click/frame
         if stage > 1: 
             updatelcs(i=framenum)
+
+compstar = 1 #which star to divide by
+def setCompStar(s):
+    global compstar
+    compstar = s
+    log("Now dividing by comparsion star #"+str(s),1)
+    updatelcs(framenum)
 
 
 #Phot results: variables to hold light curves and uncertainties
@@ -917,7 +933,7 @@ def updatelcs(i):
     goodmask[bad] = False
     badmask = np.zeros(i+1, np.bool)
     badmask[bad] = True
-    targdivided = photresults[:i+1,0,apsizeindex]/photresults[:i+1,1,apsizeindex] #currently only using one comp star and aperture size set to 3 pix.
+    targdivided = photresults[:i+1,0,apsizeindex]/photresults[:i+1,compstar,apsizeindex]
     times = np.arange(i+1)#Multiply by exptime for timestamps
     goodfluxnorm=targdivided[goodmask[:i+1]]/np.mean(targdivided[goodmask[:i+1]])
     s1.setData(exptime*times[goodmask[:i+1]],goodfluxnorm)
