@@ -35,6 +35,7 @@ from astropy.stats import biweight_location, biweight_midvariance
 from photutils import daofind
 from photutils import CircularAperture, CircularAnnulus, aperture_photometry
 from pyqtgraph.dockarea import *
+from bs4 import BeautifulSoup
 # Local modules.
 import read_spe
 
@@ -544,6 +545,8 @@ log("Open SPE file to begin analysis.",1)
 spefile = ''
 #SPE Data
 spe=[]
+#Exposure time for science frames
+exptime=0.
 #Dark data
 dark = []
 darkExists=False
@@ -602,19 +605,24 @@ def stage1(fname):
 
 #Helper functions, useful here and elsewhere
 def readspe():
-    global spe, binning
+    global spe, binning, exptime
     #Read in the spe file and print details to the log
     spe = read_spe.File(spefile)
     binning = 1024/spe.get_frame(0)[0].shape[0]
     log(str(spe.get_num_frames()) + ' frames read in.')
-    log('Inferred exposure time: '+str(getexptime(spe))+' s')
-    if hasattr(spe, 'footer_metadata'): log('SPE file has footer.')
+    exptime=getexptime(spe)
+    log('Inferred exposure time: '+str(exptime)+' s')
+    if hasattr(spe, 'footer_metadata'): 
+        log('SPE file has footer.')
+        exptime=np.round(float(BeautifulSoup(spe.footer_metadata, "xml").find(name='ExposureTime').text)/1000.)
+        log('Exposute time from footer: '+str(exptime)+' s')
+        
 
 #Determine the exposuretime of a SPE file without a footer
 def getexptime(thisspe):
     #Input open SPE file
     #don't read lots of frames in large files
-    numtoread = min([thisspe.get_num_frames(),10])
+    numtoread = min([thisspe.get_num_frames(),11])
     tstamps = np.zeros(numtoread)
     for f in range(numtoread): 
         tstamps[f] = spe.get_frame(f)[1]['time_stamp_exposure_started']
