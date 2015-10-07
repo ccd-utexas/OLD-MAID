@@ -318,15 +318,15 @@ win.setWindowTitle('ProEM Online Data Analysis')
 
 
 ## Set up each of the docks (to hold the widgets)
-d1 = Dock("Dock1 - Observing Log", size=(500,600))
-d2 = Dock("Dock2 - Process Log", size=(500,600))
-d3 = Dock("Dock3 - Fourier Transform", size=(600,600))
-d4 = Dock("Dock4 - Smoothed", size=(1100,300))
-d5 = Dock("Dock5 - Image", size=(500,600))
-d6 = Dock("Dock6 - Light Curve", size=(1100,300))
-d7 = Dock("Dock7 - Comparison Counts", size=(500,300))
-d8 = Dock("Dock8 - Sky Brightness", size=(1100,300))
-d9 = Dock("Dock8 - Seeing", size=(1100,300))
+d1 = Dock("Observing Log", size=(500,600))
+d2 = Dock("Process Log", size=(500,600))
+d3 = Dock("Fourier Transform", size=(600,600))
+d4 = Dock("Smoothed Light Curve", size=(1100,300))
+d5 = Dock("Image", size=(500,600))
+d6 = Dock("Divided Light Curve", size=(1100,300))
+d7 = Dock("Raw Counts", size=(500,300))
+d8 = Dock("Sky Brightness", size=(1100,300))
+d9 = Dock("Seeing", size=(1100,300))
 
 #Define initial layout
 area.addDock(d4, 'left')    
@@ -400,7 +400,7 @@ def log(text,level=0):
 
 ## Light Curve
 # It's a plot
-w6 = pg.PlotWidget(title="Dock 6 plot",labels={'left': 'rel. flux', 'bottom': 'time (s)'})
+w6 = pg.PlotWidget(title="Divided Light Curve",labels={'left': 'rel. flux', 'bottom': 'time (s)'})
 # Set up plot components
 # Raw points
 s1 = pg.ScatterPlotItem(brush=(255,0,0), pen='w',symbol='o')
@@ -430,7 +430,7 @@ s1.sigClicked.connect(clicked)
 
 
 ## Smoothed Light Curve
-w4 = pg.PlotWidget(title="Dock 4 plot",labels={'left': 'smoothed flux', 'bottom': 'time (s)'})
+w4 = pg.PlotWidget(title="Smoothed Light Curve",labels={'left': 'smoothed flux', 'bottom': 'time (s)'})
 ss1 = pg.ScatterPlotItem(brush=(255,0,0), pen='w',symbol='o')
 sl1 = pg.PlotCurveItem()
 w4.addItem(ss1)
@@ -439,19 +439,19 @@ d4.addWidget(w4)
 
 
 ## Raw Star/Sky Counts
-w7 = pg.PlotWidget(title="Dock 7 plot")
+w7 = pg.PlotWidget(title="Raw Star Counts",labels={'left': 'flux summed in aperture', 'bottom': 'time (s)'})
 d7.addWidget(w7)
 #Hold the individual plot items in this list once they are created:
 rawcounts=[]
 
 ## Sky
-w8 = pg.PlotWidget(title="Dock 8 plot",labels={'left': 'median sky counts', 'bottom': 'time (s)'})
+w8 = pg.PlotWidget(title="Sky Brightness",labels={'left': 'median sky counts', 'bottom': 'time (s)'})
 sky = pg.PlotCurveItem()
 w8.addItem(sky)
 d8.addWidget(w8)
 
 ## Seeing
-w9 = pg.PlotWidget(title="Dock 9 plot",labels={'left': 'seeing (")', 'bottom': 'time (s)'})
+w9 = pg.PlotWidget(title="Seeing (not yet implemented)",labels={'left': 'seeing (")', 'bottom': 'time (s)'})
 seeing = pg.PlotCurveItem()
 w9.addItem(seeing) #Placeholder for now
 d9.addWidget(w9)
