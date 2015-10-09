@@ -90,12 +90,6 @@ class WithMenu(QtGui.QMainWindow):
         runPhot.setStatusTip('Run Aperture Photometry on Frames')
         runPhot.triggered.connect(self.run)
         
-        #Update Photometry
-        update = QtGui.QAction('&Update', self)
-        update.setShortcut('Ctrl+U')
-        update.setStatusTip('Update for New Data')
-        update.triggered.connect(self.update)
-        
         #Load dark for science frames
         loadDark = QtGui.QAction('Load Dark SPE', self)
         loadDark.setStatusTip('Open SPE Calibrations for Dark Subtracting Science Images')
@@ -132,7 +126,6 @@ class WithMenu(QtGui.QMainWindow):
         fileMenu = menubar.addMenu('File')
         fileMenu.addAction(openFile)
         fileMenu.addAction(runPhot)
-        fileMenu.addAction(update)
         fileMenu.addAction(exitAction)
         #Calibrations Menu
         calibrationsMenu = menubar.addMenu('Calibrations')
@@ -307,10 +300,6 @@ class WithMenu(QtGui.QMainWindow):
         else:
             event.ignore()
             
-    def update(self):
-        #get caught up with new data
-        updatehack()
-
 # Make the App have a window and dock area.         
 app = QtGui.QApplication([])
 win = WithMenu()
@@ -561,8 +550,10 @@ spefile = ''
 spe=[]
 #Does SPE have a footer?
 hasFooter=False
+#Number of frames in currently read spe file
+numframes=0
 #Exposure time for science frames
-exptime=0.
+exptime=1. #If it can't be figured out, plots are in terms of frame #
 #Dark data
 dark = []
 darkExists=False
@@ -650,14 +641,14 @@ def processframe(i=0):
     #append stuff to global variables
     #Replace if this frame already exists, otherwise append
     if i <= framenum: #replace
-        log('Re-processing frame '+str(i)+' of '+str(framenum))
+        #log('Re-processing frame '+str(i)+' of '+str(framenum))
         img[i]=np.transpose(thisframe)
         rawtimes[i]=thistime['time_stamp_exposure_started']
         backgroundmed,backgroundvar=charbackground(i=i)
         backmed[i]=backgroundmed
         backvar[i]=backgroundvar
     else: #append
-        log('Processing frame '+str(i)+' of '+str(framenum))
+        #log('Processing frame '+str(i)+' of '+str(framenum))
         img.append(np.transpose(thisframe))
         rawtimes.append(thistime['time_stamp_exposure_started'])
         backgroundmed,backgroundvar=charbackground(i=i)
@@ -670,7 +661,7 @@ def processframe(i=0):
     imgvals = newdisplayimg.flatten()
     img99percentile = np.percentile(imgvals,99)
     newdisplayimg[newdisplayimg > img99percentile] = img99percentile
-    log("Framenum: "+str(framenum),2)
+    #log("Framenum: "+str(framenum),2)
     #Replace if this frame already exists, otherwise append
     if i <= framenum: #replace
         displayimg[i]=newdisplayimg
@@ -748,11 +739,14 @@ def improvecoords(x,y,i=w5.currentIndex,pixdist=pixdist,fwhm=8.0,sigma=5.):
 
     #check that unique source found
     if len(sources) == 0:
-        log("WARNING: no sources found in searched region near "+str((x,y))+".")
+        log("Frame #"+str(i),1)
+        log("WARNING: no sources found in searched region near ({:.2f}, {:.2f}).".format(x,y))
         #delta = [0,0] in this case
     else:
         if len(sources) > 1:
-            log("WARNING: non-unique solution found for target near "+str((x,y))+". "+str(len(sources))+" signals in window.  Using brightest.")
+            log("Frame #"+str(i),1)
+            log("WARNING: non-unique solution found for target near ({:.2f}, {:.2f}).".format(x,y))
+            log(str(len(sources))+" signals in window.  Using brightest.")
         #Take brightest star found
         strongsignal= np.argmax(sources['peak'])
         delta[0]+=returnedx[strongsignal]-pixdist
@@ -825,6 +819,8 @@ def stage2():
     dophot(0)
     updatelcs(i=0)
     updatehack()
+    #Start timer that looks for new data
+    timer2.start(exptime*1000.)
     #This currently freezes up the UI.  Need to thread, but not enough time
     #to implement this currently.  Use a hack for now
     '''
@@ -846,50 +842,69 @@ def stage2():
             spe.close()
         fsize_spe_old = fsize_spe_new
     '''
-    
+
+
 def updatehack():
-    global spe, hasFooter
-    fsize_spe_old = 0
-    #Update only if there's new data
-    fsize_spe_new = os.path.getsize(spefile)
-    if fsize_spe_new > fsize_spe_old:
-        spe = read_spe.File(spefile)
-        numframes = spe.get_num_frames()
-        log('Processing frames '+str(framenum)+'-'+str(numframes),1)
-        while framenum < numframes:
-            nextframe()
-        #Update plots
-        updatelcs(i=framenum)
-        if hasattr(spe, 'footer_metadata'): 
-            hasFooter = True
-            log('SPE footer detected. Data acquisition complete.',2)
-            stagechange(3)
+    global spe, hasFooter, numframes
+    #Only look for new data if not currently processing new data
+    if not timer.isActive():
+        fsize_spe_old = 0
+        #Update only if there's new data
+        fsize_spe_new = os.path.getsize(spefile)
+        
+        if fsize_spe_new > fsize_spe_old and stage ==2:
+            spe = read_spe.File(spefile)
+            numframes = spe.get_num_frames()
+            log('Processing frames '+str(framenum)+'-'+str(numframes),1)        
+            timer.start(100)
+            #Update plots
+            updatelcs(i=framenum)
+            if hasattr(spe, 'footer_metadata'): 
+                hasFooter = True
+                log('SPE footer detected. Data acquisition complete.',2)
+                stagechange(3)
+                displayFrame(i=numframes-1)
+        fsize_spe_old = fsize_spe_new
+
+def nextframehack():
+    #call nextframe until you're caught up
+    global framenum,spe
+    nextframe()
+    updatelcs(i=framenum)
+    if framenum >= numframes-1:
         spe.close()
-    fsize_spe_old = fsize_spe_new
+        timer.stop()
+        
+
+#This timer catches up on photometry
+timer = pg.QtCore.QTimer()#set up timer to avoid while loop
+timer.timeout.connect(nextframehack)
+
+#This timer checks for new data
+timer2 = pg.QtCore.QTimer()
+timer2.timeout.connect(updatehack)
+
 
 #For demo purposes, read in the next frame of the spe file each time this is called
 def nextframe():
     global stars
-    if stage == 2:
-        oldcoords = stars[framenum]
-        processframe(i=framenum+1) #Frame num increases here.
-        newcoords=[]
-        for coord in oldcoords:
-            dx,dy = improvecoords(coord[0],coord[1],i=framenum)
-            newcoords.append([np.floor(coord[0])+.5+dx,np.floor(coord[1])+.5+dy])        
-        stars.append(newcoords)
-        #Show the frame
-        displayFrame(i=framenum,markstars=True)
-        #Perform photometry
-        dophot(i=framenum)
-        #Update light curves
-        #updatelcs(i=framenum) #only after all the new photometry is done.
-        
+    #if stage == 2:
+    oldcoords = stars[framenum]
+    processframe(i=framenum+1) #Frame num increases here.
+    newcoords=[]
+    for coord in oldcoords:
+        dx,dy = improvecoords(coord[0],coord[1],i=framenum)
+        newcoords.append([np.floor(coord[0])+.5+dx,np.floor(coord[1])+.5+dy])        
+    stars.append(newcoords)
+    #Show the frame
+    displayFrame(i=framenum,markstars=True)
+    #Perform photometry
+    dophot(i=framenum)
+    #Update light curves
+    #updatelcs(i=framenum) #only after all the new photometry is done.
+    
 
-#Set up timer loop for showing old data as simulated data
-#timer2 = pg.QtCore.QTimer()
-#timer2.timeout.connect(nextframe)
-#timer2.start(2000)
+
     
 
 def dophot(i):
@@ -955,17 +970,23 @@ def updatelcs(i):
     badmask[bad] = True
     targdivided = photresults[:i+1,0,apsizeindex]/photresults[:i+1,compstar,apsizeindex]
     times = np.arange(i+1)#Multiply by exptime for timestamps
-    goodfluxnorm=targdivided[goodmask[:i+1]]/np.mean(targdivided[goodmask[:i+1]])
+    goodfluxnorm=targdivided[goodmask[:i+1]]/np.abs(np.mean(targdivided[goodmask[:i+1]]))
     s1.setData(exptime*times[goodmask[:i+1]],goodfluxnorm)
     #s2.setData(times[badmask[:i]],targdivided[badmask[:i]])
     l1.setData(exptime*times[goodmask[:i+1]],goodfluxnorm)
 
     #Fourier Transform    
-    if goodmask.sum() > 1: #This all requires at least two points
+    if goodmask.sum() > 2: #This all requires at least two points
         interped = interp1d(exptime*times[goodmask[:i+1]],goodfluxnorm-1.)
         xnew = np.arange(exptime*min(times[goodmask[:i+1]]),exptime*max(times[goodmask[:i+1]]),exptime)
         ynew = interped(xnew)
-        f,H = FT_continuous(xnew,ynew)
+        #number of samples must be even for FT_continuous
+        f=0
+        H=0        
+        if xnew.size % 2 == 0:
+            f,H = FT_continuous(xnew,ynew)
+        else:
+            f,H = FT_continuous(xnew[:-1],ynew[:-1])
         H=2*np.sqrt(H.real**2 + H.imag**2.)/len(ynew)
         ft.setData(1e6*f[len(f)/2.:],1e3*H[len(f)/2.:])
         #Smoothed LC
