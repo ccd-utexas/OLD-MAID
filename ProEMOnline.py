@@ -90,6 +90,12 @@ class WithMenu(QtGui.QMainWindow):
         runPhot.setStatusTip('Run Aperture Photometry on Frames')
         runPhot.triggered.connect(self.run)
         
+        #Update Photometry
+        update = QtGui.QAction('&Update', self)
+        update.setShortcut('Ctrl+U')
+        update.setStatusTip('Update for New Data')
+        update.triggered.connect(self.update)
+        
         #Load dark for science frames
         loadDark = QtGui.QAction('Load Dark SPE', self)
         loadDark.setStatusTip('Open SPE Calibrations for Dark Subtracting Science Images')
@@ -126,6 +132,7 @@ class WithMenu(QtGui.QMainWindow):
         fileMenu = menubar.addMenu('File')
         fileMenu.addAction(openFile)
         fileMenu.addAction(runPhot)
+        fileMenu.addAction(update)
         fileMenu.addAction(exitAction)
         #Calibrations Menu
         calibrationsMenu = menubar.addMenu('Calibrations')
@@ -299,6 +306,10 @@ class WithMenu(QtGui.QMainWindow):
             event.accept()
         else:
             event.ignore()
+            
+    def update(self):
+        #get caught up with new data
+        updatehack()
 
 # Make the App have a window and dock area.         
 app = QtGui.QApplication([])
@@ -607,7 +618,6 @@ def stage1(fname):
     #now display the first frame
     processframe()
     displayFrame(autoscale=True,markstars=False)
-    spe.close()
     #Load calibration frames and set up
     log("Please load dark, flat, and dark for flat SPE files",1)
     dark = np.zeros(img[0].shape)
@@ -813,6 +823,10 @@ def stage2():
     stars=[stars]
     #Run photometry on the first frame
     dophot(0)
+    updatelcs(i=0)
+    #This currently freezes up the UI.  Need to thread, but not enough time
+    #to implement this currently.  Use a hack for now
+    '''
     #Run the loop:
     fsize_spe_old = 0
     while not hasFooter:
@@ -830,6 +844,27 @@ def stage2():
                 stagechange(3)
             spe.close()
         fsize_spe_old = fsize_spe_new
+    '''
+    
+def updatehack():
+    global spe, hasFooter
+    fsize_spe_old = 0
+    #Update only if there's new data
+    fsize_spe_new = os.path.getsize(spefile)
+    if fsize_spe_new > fsize_spe_old:
+        spe = read_spe.File(spefile)
+        numframes = spe.get_num_frames()
+        log('Processing frames '+str(framenum)+'-'+str(numframes),1)
+        while framenum < numframes:
+            nextframe()
+        #Update plots
+        updatelcs(i=framenum)
+        if hasattr(spe, 'footer_metadata'): 
+            hasFooter = True
+            log('SPE footer detected. Data acquisition complete.',2)
+            stagechange(3)
+        spe.close()
+    fsize_spe_old = fsize_spe_new
 
 #For demo purposes, read in the next frame of the spe file each time this is called
 def nextframe():
@@ -847,7 +882,7 @@ def nextframe():
         #Perform photometry
         dophot(i=framenum)
         #Update light curves
-        updatelcs(i=framenum)
+        #updatelcs(i=framenum) #only after all the new photometry is done.
         
 
 #Set up timer loop for showing old data as simulated data
@@ -893,7 +928,6 @@ def dophot(i):
             #phot = aperture_photometry(img[i]-np.median(img),aperture)
             phot = aperture_photometry(img[i]-backmed[i],aperture)
             thisphotometry[n,j]=phot['aperture_sum'][0]
-            time.sleep(1)
     #print "photometry ",thisphotometry
     if i == 0:
         photresults = np.array([thisphotometry])
@@ -924,17 +958,18 @@ def updatelcs(i):
     s1.setData(exptime*times[goodmask[:i+1]],goodfluxnorm)
     #s2.setData(times[badmask[:i]],targdivided[badmask[:i]])
     l1.setData(exptime*times[goodmask[:i+1]],goodfluxnorm)
-    #Fourier Transform
-    interped = interp1d(exptime*times[goodmask[:i+1]],goodfluxnorm-1.)
-    xnew = np.arange(exptime*min(times[goodmask[:i+1]]),exptime*max(times[goodmask[:i+1]]),exptime)
-    ynew = interped(xnew)
-    if len(xnew) > 1 and len(xnew) % 2 == 0:
+
+    #Fourier Transform    
+    if goodmask.sum() > 1: #This all requires at least two points
+        interped = interp1d(exptime*times[goodmask[:i+1]],goodfluxnorm-1.)
+        xnew = np.arange(exptime*min(times[goodmask[:i+1]]),exptime*max(times[goodmask[:i+1]]),exptime)
+        ynew = interped(xnew)
         f,H = FT_continuous(xnew,ynew)
         H=2*np.sqrt(H.real**2 + H.imag**2.)/len(ynew)
         ft.setData(1e6*f[len(f)/2.:],1e3*H[len(f)/2.:])
-    #Smoothed LC
-    fluxsmoothed=filters.gaussian_filter1d(ynew,sigma=sigma)
-    ss1.setData(xnew,fluxsmoothed)
+        #Smoothed LC
+        fluxsmoothed=filters.gaussian_filter1d(ynew,sigma=sigma)
+        ss1.setData(xnew,fluxsmoothed)
     #sl1.setData(times[goodmask[:i]],fluxsmoothed[goodmask[:i]])
     #Raw Counts:
     for j,splot in enumerate(rawcounts): splot.setData(exptime*times,photresults[:,j,apsizeindex])
@@ -944,6 +979,24 @@ def updatelcs(i):
 
 
 
+''' Not implemented yet!
+#To keep the GUI from locking up, computationally intensive processes must
+#be done in a thread.  Set up that thread here:
+class Stage2Thread(QtCore.QThread):
+
+    setTime = QtCore.pyqtSignal(int,int)
+    iteration = QtCore.pyqtSignal(threading.Event, int)
+
+    def run(self):
+
+        self.setTime.emit(0,300)
+        for i in range(300):
+            time.sleep(0.05)
+            event = threading.Event()
+            self.iteration.emit(event, i)
+            event.wait()
+
+'''
 
 
 
