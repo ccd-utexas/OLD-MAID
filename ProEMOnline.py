@@ -3,11 +3,6 @@
 This scripts sets an initial layout for the ProEMOnline software.  It uses the
 PyQtGraph dockarea system and was designed from the dockarea.py example.
 
-Contains:
-Left column: Observing Log
-Center column: Plots
-Right column: Images and Process Log
-Menu bar
 
 Keaton wrote this.
 """
@@ -16,15 +11,14 @@ Keaton wrote this.
 #Import everything you'll need
 import pyqtgraph as pg
 from pyqtgraph.Qt import QtCore, QtGui
-#import pyqtgraph.console
 import numpy as np
 import pickle #for saving layouts
 from glob import glob
 from scipy import stats
-#import math
 import os
 import csv
 import sys
+import time
 import datetime as dt
 import dateutil.parser
 from astropy.io import fits
@@ -63,7 +57,7 @@ def stagechange(num):
 
 #### STAGE 0 ####
 #Set up the general GUI aspects
-defaultdir = '/Users/keatonb/Observing/ProEMData/'#where to search for SPE files
+defaultdir = 'D:'#where to search for SPE files
 
 
 #Set up main window with menu items
@@ -96,6 +90,12 @@ class WithMenu(QtGui.QMainWindow):
         runPhot.setStatusTip('Run Aperture Photometry on Frames')
         runPhot.triggered.connect(self.run)
         
+        #Update Photometry
+        update = QtGui.QAction('&Update', self)
+        update.setShortcut('Ctrl+U')
+        update.setStatusTip('Update for New Data')
+        update.triggered.connect(self.update)
+        
         #Load dark for science frames
         loadDark = QtGui.QAction('Load Dark SPE', self)
         loadDark.setStatusTip('Open SPE Calibrations for Dark Subtracting Science Images')
@@ -117,12 +117,12 @@ class WithMenu(QtGui.QMainWindow):
         restorePoints.triggered.connect(self.restorePts)
                 
         #Save Layout
-        saveLayout = QtGui.QAction('Save layout', self)
+        saveLayout = QtGui.QAction('Save Layout', self)
         saveLayout.setStatusTip('Save the current dock layout')
         saveLayout.triggered.connect(self.saveLayout)
         
         #Load Layout
-        loadLayout = QtGui.QAction('Load layout', self)
+        loadLayout = QtGui.QAction('Load Layout', self)
         loadLayout.setStatusTip('Load a saved dock layout')
         loadLayout.triggered.connect(self.loadLayout)
         
@@ -132,6 +132,7 @@ class WithMenu(QtGui.QMainWindow):
         fileMenu = menubar.addMenu('File')
         fileMenu.addAction(openFile)
         fileMenu.addAction(runPhot)
+        fileMenu.addAction(update)
         fileMenu.addAction(exitAction)
         #Calibrations Menu
         calibrationsMenu = menubar.addMenu('Calibrations')
@@ -143,7 +144,6 @@ class WithMenu(QtGui.QMainWindow):
         interactionsMenu.addAction(restorePoints)
         self.changeApertureMenu = interactionsMenu.addMenu('Select Aperture Size')
         self.changeCompStarMenu = interactionsMenu.addMenu('Select Comp Star for Division')
-        
         #Layout Menu
         layoutMenu = menubar.addMenu('Layout')
         layoutMenu.addAction(saveLayout)
@@ -279,7 +279,7 @@ class WithMenu(QtGui.QMainWindow):
         for size in apsizes:
             self.changeApertureMenu.addAction(str(size)+' pixels',lambda s=size: setApSize(s))
     
-    #Set up aperture size menu options
+    #Set up comp star selection menu options
     def addCompStarOption(self,i): 
         self.changeCompStarMenu.addAction('Comp Star #'+str(i),lambda s=i: setCompStar(s))
             
@@ -306,6 +306,10 @@ class WithMenu(QtGui.QMainWindow):
             event.accept()
         else:
             event.ignore()
+            
+    def update(self):
+        #get caught up with new data
+        updatehack()
 
 # Make the App have a window and dock area.         
 app = QtGui.QApplication([])
@@ -313,7 +317,7 @@ win = WithMenu()
 area = DockArea()
 win.setCentralWidget(area)
 win.resize(1600,1200)
-win.setWindowTitle('ProEM Online Data Analysis')
+win.setWindowTitle('OLD MAID Software')
 
 
 
@@ -349,13 +353,14 @@ w1 = pg.LayoutWidget()
 observer = QtGui.QLabel('Observer')
 target = QtGui.QLabel('Target')
 filt = QtGui.QLabel('Filter')
-log = QtGui.QLabel('Log')
+logtext = QtGui.QLabel('Log')
 #Define the types of fields
 observerEdit = QtGui.QLineEdit()
 targetEdit = QtGui.QLineEdit()
 filtEdit = QtGui.QComboBox()
 filtEdit.addItems(["BG40","u'","g'","r'","i'","z'","Other"])
 logEdit = QtGui.QTextEdit()
+logEdit.setText("WARNING: None of these log fields are saved!")
 #Put the fields in the form
 w1.addWidget(observer, 1, 0)
 w1.addWidget(observerEdit, 1, 1)
@@ -363,7 +368,7 @@ w1.addWidget(target, 2, 0)
 w1.addWidget(targetEdit, 2, 1)        
 w1.addWidget(filt, 3, 0)
 w1.addWidget(filtEdit, 3, 1)
-w1.addWidget(log, 4, 0)
+w1.addWidget(logtext, 4, 0)
 w1.addWidget(logEdit, 4, 1, 6, 1)
 #Put the widget in the dock
 d1.addWidget(w1)
@@ -417,7 +422,6 @@ d6.addWidget(w6)
 # Make points change color when clicked
 def clicked(plot, points):
     global bad
-    #print("clicked points", points)
     for p in points:
         if p.pos()[0]/exptime in bad:
             bad.remove(p.pos()[0]/exptime)
@@ -479,8 +483,6 @@ def click(event):#Linked to image click event
         log('Clicked at ({:.2f}, {:.2f})'.format(x,y),level=0)
         #improve coordinates
         dx,dy = improvecoords(x,y)
-        #print "Clicked at "+str( (pos.x(),pos.y()) )
-        #print 'deltax,y = ' ,dx,dy
         #round originals so original position *within* pixel doesn't affect answer
         newcoords=[np.floor(x)+dx,np.floor(y)+dy]
         stars.append(newcoords)
@@ -491,9 +493,6 @@ def click(event):#Linked to image click event
         targs.setPen(pencolors[0:len(stars)])
         #Set up plot for raw counts in second panel:
         rawcounts.append(pg.ScatterPlotItem(pen=pencolors[len(stars)-1],symbol='o',size=1))
-        
-        #img[pos.x(),pos.y()]=[255,255-img[pos.x(),pos.y(),1],255-img[pos.x(),pos.y(),1]]
-        #w5.setImage(img,autoRange=False)
         log('Star selected at ({:.2f}, {:.2f})'.format(newcoords[0],newcoords[1]),level=2)
         
     elif event.button() == 2: 
@@ -560,6 +559,8 @@ log("Open SPE file to begin analysis.",1)
 spefile = ''
 #SPE Data
 spe=[]
+#Does SPE have a footer?
+hasFooter=False
 #Exposure time for science frames
 exptime=0.
 #Dark data
@@ -597,32 +598,14 @@ binning=4
 
 def stage1(fname):
     #Load SPE File
-    
+
     #Access needed global vars
-    global spefile,dark,flat
+    global spefile,spe,binning,exptime,dark,flat
     #Announce Stage 1    
     stagechange(1)
     #Record SPE filename this once
     spefile = fname
     #Read in SPE data
-    readspe()
-    #now display the first frame
-    processframe()
-    displayFrame(autoscale=True,markstars=False)
-    #Load calibration frames and set up
-    log("Please load dark, flat, and dark for flat SPE files",1)
-    dark = np.zeros(img[0].shape)
-    flat = np.ones(img[0].shape)
-    print "current frame: ",framenum
-    #Select stars:
-    selectstars()
-    #spe.close() #In real version we'll close spe
-    win.setupApsizeMenu()
-
-#Helper functions, useful here and elsewhere
-def readspe():
-    global spe, binning, exptime
-    #Read in the spe file and print details to the log
     spe = read_spe.File(spefile)
     binning = 1024/spe.get_frame(0)[0].shape[0]
     log(str(spe.get_num_frames()) + ' frames read in.')
@@ -632,6 +615,17 @@ def readspe():
         log('SPE file has footer.')
         exptime=np.round(float(BeautifulSoup(spe.footer_metadata, "xml").find(name='ExposureTime').text)/1000.)
         log('Exposute time from footer: '+str(exptime)+' s')
+    #now display the first frame
+    processframe()
+    displayFrame(autoscale=True,markstars=False)
+    #Load calibration frames and set up
+    log("Please load dark, flat, and dark for flat SPE files",1)
+    dark = np.zeros(img[0].shape)
+    flat = np.ones(img[0].shape)
+    #Select stars:
+    selectstars()
+    #spe.close() #In real version we'll close spe
+    win.setupApsizeMenu()
         
 
 #Determine the exposuretime of a SPE file without a footer
@@ -644,6 +638,7 @@ def getexptime(thisspe):
         tstamps[f] = spe.get_frame(f)[1]['time_stamp_exposure_started']
     timediff = tstamps[1:numtoread]-tstamps[:numtoread-1]
     return np.round(np.median(timediff/1e6))
+
 
 #Define all the stuff that needs to be done to each incoming frame
 def processframe(i=0):
@@ -738,7 +733,6 @@ def improvecoords(x,y,i=w5.currentIndex,pixdist=pixdist,fwhm=8.0,sigma=5.):
     #return the adjustment than needs to be made in x and y directions
     #NOTE: This may have trouble near edges.
     """
-    #print x,y
     #x=(1024/binning)-x
     #y=(1024/binning)-y
     #Keep track of motion
@@ -776,16 +770,6 @@ def improvecoords(x,y,i=w5.currentIndex,pixdist=pixdist,fwhm=8.0,sigma=5.):
 
 
 
-def setNumStars(num):
-    '''Propogate number of stars to global variables
-    
-    When the number of stars being used is defined, some variable shapes need
-    to be set to match.  Do that here.
-    '''
-    global numstars
-    numstars=num
-
-
 
 
 
@@ -800,8 +784,6 @@ def setNumStars(num):
 
 
 #### STAGE 2 ####
-
-#Function to loop through and do the photometry
 
 #Aperture details (provide a way to change these!)
 apsizes=np.arange(1,11)
@@ -832,7 +814,7 @@ photresults=np.array([])
 
 #Run the stage 2 loop
 def stage2():
-    global stars, stage
+    global stars, spe, stage, hasFooter
     stagechange(2)
     #Add plot items for raw counts panel to plot
     for splot in rawcounts: w7.addItem(splot)
@@ -841,35 +823,72 @@ def stage2():
     stars=[stars]
     #Run photometry on the first frame
     dophot(0)
+    updatelcs(i=0)
+    #This currently freezes up the UI.  Need to thread, but not enough time
+    #to implement this currently.  Use a hack for now
+    '''
+    #Run the loop:
+    fsize_spe_old = 0
+    while not hasFooter:
+        #Update only if there's new data
+        fsize_spe_new = os.path.getsize(spefile)
+        if fsize_spe_new > fsize_spe_old:
+            spe = read_spe.File(spefile)
+            numframes = spe.get_num_frames()
+            log('Processing frames '+str(framenum)+'-'+str(numframes),1)
+            while framenum < numframes:
+                nextframe()
+            if hasattr(spe, 'footer_metadata'): 
+                hasFooter = True
+                log('SPE footer detected. Data acquisition complete.',2)
+                stagechange(3)
+            spe.close()
+        fsize_spe_old = fsize_spe_new
+    '''
     
+def updatehack():
+    global spe, hasFooter
+    fsize_spe_old = 0
+    #Update only if there's new data
+    fsize_spe_new = os.path.getsize(spefile)
+    if fsize_spe_new > fsize_spe_old:
+        spe = read_spe.File(spefile)
+        numframes = spe.get_num_frames()
+        log('Processing frames '+str(framenum)+'-'+str(numframes),1)
+        while framenum < numframes:
+            nextframe()
+        #Update plots
+        updatelcs(i=framenum)
+        if hasattr(spe, 'footer_metadata'): 
+            hasFooter = True
+            log('SPE footer detected. Data acquisition complete.',2)
+            stagechange(3)
+        spe.close()
+    fsize_spe_old = fsize_spe_new
 
 #For demo purposes, read in the next frame of the spe file each time this is called
 def nextframe():
     global stars
     if stage == 2:
         oldcoords = stars[framenum]
-        log('nextframe run on frame '+str(framenum))
-        #print 'nextframe run on frame '+str(framenum)
-        processframe(i=framenum+1)
+        processframe(i=framenum+1) #Frame num increases here.
         newcoords=[]
         for coord in oldcoords:
             dx,dy = improvecoords(coord[0],coord[1],i=framenum)
             newcoords.append([np.floor(coord[0])+.5+dx,np.floor(coord[1])+.5+dy])        
         stars.append(newcoords)
-        #print stars
         #Show the frame
         displayFrame(i=framenum,markstars=True)
         #Perform photometry
         dophot(i=framenum)
-        #Update light curves 
-        log("Apsizeindex: "+str(apsizeindex),2)
-        updatelcs(i=framenum)
+        #Update light curves
+        #updatelcs(i=framenum) #only after all the new photometry is done.
         
 
 #Set up timer loop for showing old data as simulated data
-timer2 = pg.QtCore.QTimer()
-timer2.timeout.connect(nextframe)
-timer2.start(2000)
+#timer2 = pg.QtCore.QTimer()
+#timer2.timeout.connect(nextframe)
+#timer2.start(2000)
     
 
 def dophot(i):
@@ -939,17 +958,18 @@ def updatelcs(i):
     s1.setData(exptime*times[goodmask[:i+1]],goodfluxnorm)
     #s2.setData(times[badmask[:i]],targdivided[badmask[:i]])
     l1.setData(exptime*times[goodmask[:i+1]],goodfluxnorm)
-    #Fourier Transform
-    interped = interp1d(exptime*times[goodmask[:i+1]],goodfluxnorm-1.)
-    xnew = np.arange(exptime*min(times[goodmask[:i+1]]),exptime*max(times[goodmask[:i+1]]),exptime)
-    ynew = interped(xnew)
-    if len(xnew) > 1 and len(xnew) % 2 == 0:
+
+    #Fourier Transform    
+    if goodmask.sum() > 1: #This all requires at least two points
+        interped = interp1d(exptime*times[goodmask[:i+1]],goodfluxnorm-1.)
+        xnew = np.arange(exptime*min(times[goodmask[:i+1]]),exptime*max(times[goodmask[:i+1]]),exptime)
+        ynew = interped(xnew)
         f,H = FT_continuous(xnew,ynew)
         H=2*np.sqrt(H.real**2 + H.imag**2.)/len(ynew)
         ft.setData(1e6*f[len(f)/2.:],1e3*H[len(f)/2.:])
-    #Smoothed LC
-    fluxsmoothed=filters.gaussian_filter1d(ynew,sigma=sigma)
-    ss1.setData(xnew,fluxsmoothed)
+        #Smoothed LC
+        fluxsmoothed=filters.gaussian_filter1d(ynew,sigma=sigma)
+        ss1.setData(xnew,fluxsmoothed)
     #sl1.setData(times[goodmask[:i]],fluxsmoothed[goodmask[:i]])
     #Raw Counts:
     for j,splot in enumerate(rawcounts): splot.setData(exptime*times,photresults[:,j,apsizeindex])
@@ -959,6 +979,24 @@ def updatelcs(i):
 
 
 
+''' Not implemented yet!
+#To keep the GUI from locking up, computationally intensive processes must
+#be done in a thread.  Set up that thread here:
+class Stage2Thread(QtCore.QThread):
+
+    setTime = QtCore.pyqtSignal(int,int)
+    iteration = QtCore.pyqtSignal(threading.Event, int)
+
+    def run(self):
+
+        self.setTime.emit(0,300)
+        for i in range(300):
+            time.sleep(0.05)
+            event = threading.Event()
+            self.iteration.emit(event, i)
+            event.wait()
+
+'''
 
 
 
