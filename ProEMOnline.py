@@ -824,6 +824,7 @@ def stage2():
     #Run photometry on the first frame
     dophot(0)
     updatelcs(i=0)
+    updatehack()
     #This currently freezes up the UI.  Need to thread, but not enough time
     #to implement this currently.  Use a hack for now
     '''
