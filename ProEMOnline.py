@@ -833,7 +833,7 @@ def stage2():
     updatehack()
     #Start timer that looks for new data
     timer2.start(exptime*1000.)
-    timer3.start(10*60*1000)#update every 10 minutes
+    timer3.start(10.*60*1000)#update every 10 minutes
     #This currently freezes up the UI.  Need to thread, but not enough time
     #to implement this currently.  Use a hack for now
     '''
@@ -997,6 +997,8 @@ def updatelcs(i):
     #Sky brightness
     sky.setData(exptime*times,backmed)
 
+def updateftfromtimer():
+    updateft(i=framenum)
 
 def updateft(i=framenum): #update ft and smoothed lc
     if framenum < numframes-1:
@@ -1031,7 +1033,7 @@ def updateft(i=framenum): #update ft and smoothed lc
 
 #This timer recomputes the FT and smoothed lc infrequently
 timer3 = pg.QtCore.QTimer()
-timer3.timeout.connect(updateft)
+timer3.timeout.connect(updateftfromtimer)
 
 ''' Not implemented yet!
 #To keep the GUI from locking up, computationally intensive processes must
