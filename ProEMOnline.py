@@ -266,6 +266,8 @@ class WithMenu(QtGui.QMainWindow):
         global bad
         log("Deselecting "+str(len(bad))+" points.")
         bad=[]
+        updatelcs(i=framenum)
+        updateft(i=framenum)
     
     #Set up aperture size menu options
     def setupApsizeMenu(self): 
@@ -416,7 +418,8 @@ def clicked(plot, points):
             bad.remove(p.pos()[0]/exptime)
         else:
             bad.append(p.pos()[0]/exptime)
-    updatelcs(framenum)
+    updatelcs(i=framenum)
+    updateft(i=framenum)
     
 s1.sigClicked.connect(clicked)
 #s2.sigClicked.connect(clicked)
@@ -855,7 +858,7 @@ def updatehack():
         if fsize_spe_new > fsize_spe_old and stage ==2:
             spe = read_spe.File(spefile)
             numframes = spe.get_num_frames()
-            log('Processing frames '+str(framenum)+'-'+str(numframes),1)        
+            log('Processing frames '+str(framenum)+'-'+str(numframes-1),1)        
             timer.start(100)
             #Update plots
             updatelcs(i=framenum)
@@ -871,6 +874,9 @@ def nextframehack():
     global framenum,spe
     nextframe()
     updatelcs(i=framenum)
+    #update every 20 frames and on last frame
+    if (numframes-1 - framenum) % 20 == 0:
+        updateft(i=framenum)
     if framenum >= numframes-1:
         spe.close()
         timer.stop()
@@ -974,9 +980,30 @@ def updatelcs(i):
     s1.setData(exptime*times[goodmask[:i+1]],goodfluxnorm)
     #s2.setData(times[badmask[:i]],targdivided[badmask[:i]])
     l1.setData(exptime*times[goodmask[:i+1]],goodfluxnorm)
+    #sl1.setData(times[goodmask[:i]],fluxsmoothed[goodmask[:i]])
+    #Raw Counts:
+    for j,splot in enumerate(rawcounts): splot.setData(exptime*times,photresults[:,j,apsizeindex])
+    #Sky brightness
+    sky.setData(exptime*times,backmed)
 
-    #Fourier Transform    
-    if goodmask.sum() > 2: #This all requires at least two points
+
+def updateft(i=numframes-1): #update ft and smoothed lc
+    print numframes,i
+    goodmask=np.ones(i+1, np.bool)
+    print goodmask
+    goodmask[bad] = False
+    print goodmask
+    targdivided = photresults[:i+1,0,apsizeindex]/photresults[:i+1,compstar,apsizeindex]
+    goodfluxnorm=targdivided[goodmask[:i+1]]/np.abs(np.mean(targdivided[goodmask[:i+1]]))
+    times = np.arange(i+1)#Multiply by exptime for timestamps
+    #Fourier Transform   and smoothed lc  
+    print goodmask
+    print bad
+    print goodmask.sum()
+    if goodmask.sum() > 2: 
+        log("should be updating ft!")
+        #This all requires at least two points
+        #Only update once per file read-in
         interped = interp1d(exptime*times[goodmask[:i+1]],goodfluxnorm-1.)
         xnew = np.arange(exptime*min(times[goodmask[:i+1]]),exptime*max(times[goodmask[:i+1]]),exptime)
         ynew = interped(xnew)
@@ -992,14 +1019,8 @@ def updatelcs(i):
         #Smoothed LC
         fluxsmoothed=filters.gaussian_filter1d(ynew,sigma=sigma)
         ss1.setData(xnew,fluxsmoothed)
-    #sl1.setData(times[goodmask[:i]],fluxsmoothed[goodmask[:i]])
-    #Raw Counts:
-    for j,splot in enumerate(rawcounts): splot.setData(exptime*times,photresults[:,j,apsizeindex])
-    #Sky brightness
-    sky.setData(exptime*times,backmed)
-
-
-
+        #QtGui.QApplication.processEvents()
+    
 
 ''' Not implemented yet!
 #To keep the GUI from locking up, computationally intensive processes must
