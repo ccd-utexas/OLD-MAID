@@ -90,6 +90,12 @@ class WithMenu(QtGui.QMainWindow):
         runPhot.setStatusTip('Run Aperture Photometry on Frames')
         runPhot.triggered.connect(self.run)
         
+        #Run Photometry
+        updateFT = QtGui.QAction('&Update FT', self)
+        updateFT.setShortcut('Ctrl+U')
+        updateFT.setStatusTip('Update Fourier Transform with Current Light Curve')
+        updateFT.triggered.connect(self.updateFTfunct)
+        
         #Load dark for science frames
         loadDark = QtGui.QAction('Load Dark SPE', self)
         loadDark.setStatusTip('Open SPE Calibrations for Dark Subtracting Science Images')
@@ -126,6 +132,7 @@ class WithMenu(QtGui.QMainWindow):
         fileMenu = menubar.addMenu('File')
         fileMenu.addAction(openFile)
         fileMenu.addAction(runPhot)
+        fileMenu.addAction(updateFT)
         fileMenu.addAction(exitAction)
         #Calibrations Menu
         calibrationsMenu = menubar.addMenu('Calibrations')
@@ -172,7 +179,6 @@ class WithMenu(QtGui.QMainWindow):
         '''
         fname = QtGui.QFileDialog.getOpenFileName(self, 'Open SPE file', 
                 defaultdir,filter='Data (*.spe)')
-        print fname, fname[-4:]
         if fname[-4:]=='.spe':
             log("Opening file "+fname,1)
             #self.spefile = fname #I don't think this line does anything.
@@ -180,6 +186,10 @@ class WithMenu(QtGui.QMainWindow):
             stage1(str(fname))
         else: log("Invalid file type (must be SPE).",3)
         
+    #Update the FT at user's command
+    def updateFTfunct(self):
+        global framenum
+        updateft(i=framenum)
         
     #Load Dark frames
     def openDark(self):
@@ -267,7 +277,6 @@ class WithMenu(QtGui.QMainWindow):
         log("Deselecting "+str(len(bad))+" points.")
         bad=[]
         updatelcs(i=framenum)
-        updateft(i=framenum)
     
     #Set up aperture size menu options
     def setupApsizeMenu(self): 
@@ -283,12 +292,13 @@ class WithMenu(QtGui.QMainWindow):
     def run(self):
         #Do aperture photometry on selected stars
         global numstars, selectingstars
-        if len(stars) == 0:
-            log("No stars selected.  Select stars before running.",3)
-        else:
-            numstars = len(stars)
-            selectingstars=False
-            stage2()
+        if stage == 1:
+            if len(stars) == 0:
+                log("No stars selected.  Select stars before running.",3)
+            else:
+                numstars = len(stars)
+                selectingstars=False
+                stage2()
             
         
     #Confirm Quit
@@ -419,7 +429,6 @@ def clicked(plot, points):
         else:
             bad.append(p.pos()[0]/exptime)
     updatelcs(i=framenum)
-    updateft(i=framenum)
     
 s1.sigClicked.connect(clicked)
 #s2.sigClicked.connect(clicked)
@@ -824,6 +833,7 @@ def stage2():
     updatehack()
     #Start timer that looks for new data
     timer2.start(exptime*1000.)
+    timer3.start(10*60*1000)#update every 10 minutes
     #This currently freezes up the UI.  Need to thread, but not enough time
     #to implement this currently.  Use a hack for now
     '''
@@ -874,12 +884,10 @@ def nextframehack():
     global framenum,spe
     nextframe()
     updatelcs(i=framenum)
-    #update ft every ~sqrt(n) frames and on last frame
-    if (numframes-1 - framenum) % (2*np.ceil(np.sqrt(numframes))) == 0:
-        updateft(i=framenum)
     if framenum >= numframes-1:
         spe.close()
         timer.stop()
+        updateft()
         if stage==3:
             log("Image processing complete",2)
         
@@ -891,6 +899,7 @@ timer.timeout.connect(nextframehack)
 #This timer checks for new data
 timer2 = pg.QtCore.QTimer()
 timer2.timeout.connect(updatehack)
+
 
 
 #For demo purposes, read in the next frame of the spe file each time this is called
@@ -989,34 +998,40 @@ def updatelcs(i):
     sky.setData(exptime*times,backmed)
 
 
-def updateft(i=numframes-1): #update ft and smoothed lc
-    oversample=10. #Oversampling factor
-    goodmask=np.ones(i+1, np.bool)
-    goodmask[bad] = False
-    targdivided = photresults[:i+1,0,apsizeindex]/photresults[:i+1,compstar,apsizeindex]
-    goodfluxnorm=targdivided[goodmask[:i+1]]/np.abs(np.mean(targdivided[goodmask[:i+1]]))
-    times = np.arange(i+1)#Multiply by exptime for timestamps
-    #Fourier Transform   and smoothed lc  
-    if goodmask.sum() > 2:
-        #This all requires at least two points
-        #Only update once per file read-in
-        interped = interp1d(exptime*times[goodmask[:i+1]],goodfluxnorm-1.)
-        xnew = np.arange(exptime*min(times[goodmask[:i+1]]),exptime*max(times[goodmask[:i+1]]),exptime/oversample)
-        ynew = interped(xnew)
-        #number of samples must be even for FT_continuous
-        f=0
-        H=0        
-        if xnew.size % 2 == 0:
-            f,H = FT_continuous(xnew,ynew)
-        else:
-            f,H = FT_continuous(xnew[:-1],ynew[:-1])
-        H=2*np.sqrt(H.real**2 + H.imag**2.)/len(ynew)
-        ft.setData(1e6*f[len(f)/2.:],1e3*H[len(f)/2.:])
-        #Smoothed LC
-        fluxsmoothed=filters.gaussian_filter1d(ynew[::oversample],sigma=sigma)
-        ss1.setData(xnew[::oversample],fluxsmoothed)
-        #QtGui.QApplication.processEvents()
-    
+def updateft(i=framenum): #update ft and smoothed lc
+    if framenum < numframes-1:
+        oversample=4. #Oversampling factor
+        goodmask=np.ones(i+1, np.bool)
+        goodmask[bad] = False
+        targdivided = photresults[:i+1,0,apsizeindex]/photresults[:i+1,compstar,apsizeindex]
+        goodfluxnorm=targdivided[goodmask[:i+1]]/np.abs(np.mean(targdivided[goodmask[:i+1]]))
+        times = np.arange(i+1)#Multiply by exptime for timestamps
+        #Fourier Transform   and smoothed lc  
+        if goodmask.sum() > 2:
+            #This all requires at least two points
+            #Only update once per file read-in
+            interped = interp1d(exptime*times[goodmask[:i+1]],goodfluxnorm-1.)
+            xnew = np.arange(exptime*min(times[goodmask[:i+1]]),exptime*max(times[goodmask[:i+1]]),exptime/oversample)
+            ynew = interped(xnew)
+            #number of samples must be even for FT_continuous
+            f=0
+            H=0        
+            if xnew.size % 2 == 0:
+                f,H = FT_continuous(xnew,ynew)
+            else:
+                f,H = FT_continuous(xnew[:-1],ynew[:-1])
+            H=2*np.sqrt(H.real**2 + H.imag**2.)/len(ynew)
+            ft.setData(1e6*f[len(f)/2.:],1e3*H[len(f)/2.:])
+            #Smoothed LC
+            fluxsmoothed=filters.gaussian_filter1d(ynew[::oversample],sigma=sigma)
+            ss1.setData(xnew[::oversample],fluxsmoothed)
+            #QtGui.QApplication.processEvents()
+        
+
+
+#This timer recomputes the FT and smoothed lc infrequently
+timer3 = pg.QtCore.QTimer()
+timer3.timeout.connect(updateft)
 
 ''' Not implemented yet!
 #To keep the GUI from locking up, computationally intensive processes must
