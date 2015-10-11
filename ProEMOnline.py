@@ -874,8 +874,8 @@ def nextframehack():
     global framenum,spe
     nextframe()
     updatelcs(i=framenum)
-    #update every 20 frames and on last frame
-    if (numframes-1 - framenum) % 20 == 0:
+    #update ft every ~sqrt(n) frames and on last frame
+    if (numframes-1 - framenum) % np.ceil(np.sqrt(numframes)) == 0:
         updateft(i=framenum)
     if framenum >= numframes-1:
         spe.close()
@@ -988,20 +988,13 @@ def updatelcs(i):
 
 
 def updateft(i=numframes-1): #update ft and smoothed lc
-    print numframes,i
     goodmask=np.ones(i+1, np.bool)
-    print goodmask
     goodmask[bad] = False
-    print goodmask
     targdivided = photresults[:i+1,0,apsizeindex]/photresults[:i+1,compstar,apsizeindex]
     goodfluxnorm=targdivided[goodmask[:i+1]]/np.abs(np.mean(targdivided[goodmask[:i+1]]))
     times = np.arange(i+1)#Multiply by exptime for timestamps
     #Fourier Transform   and smoothed lc  
-    print goodmask
-    print bad
-    print goodmask.sum()
-    if goodmask.sum() > 2: 
-        log("should be updating ft!")
+    if goodmask.sum() > 2:
         #This all requires at least two points
         #Only update once per file read-in
         interped = interp1d(exptime*times[goodmask[:i+1]],goodfluxnorm-1.)
