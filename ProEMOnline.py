@@ -875,11 +875,13 @@ def nextframehack():
     nextframe()
     updatelcs(i=framenum)
     #update ft every ~sqrt(n) frames and on last frame
-    if (numframes-1 - framenum) % np.ceil(np.sqrt(numframes)) == 0:
+    if (numframes-1 - framenum) % (2*np.ceil(np.sqrt(numframes))) == 0:
         updateft(i=framenum)
     if framenum >= numframes-1:
         spe.close()
         timer.stop()
+        if stage==3:
+            log("Image processing complete",2)
         
 
 #This timer catches up on photometry
@@ -988,6 +990,7 @@ def updatelcs(i):
 
 
 def updateft(i=numframes-1): #update ft and smoothed lc
+    oversample=10. #Oversampling factor
     goodmask=np.ones(i+1, np.bool)
     goodmask[bad] = False
     targdivided = photresults[:i+1,0,apsizeindex]/photresults[:i+1,compstar,apsizeindex]
@@ -998,7 +1001,7 @@ def updateft(i=numframes-1): #update ft and smoothed lc
         #This all requires at least two points
         #Only update once per file read-in
         interped = interp1d(exptime*times[goodmask[:i+1]],goodfluxnorm-1.)
-        xnew = np.arange(exptime*min(times[goodmask[:i+1]]),exptime*max(times[goodmask[:i+1]]),exptime)
+        xnew = np.arange(exptime*min(times[goodmask[:i+1]]),exptime*max(times[goodmask[:i+1]]),exptime/oversample)
         ynew = interped(xnew)
         #number of samples must be even for FT_continuous
         f=0
@@ -1010,8 +1013,8 @@ def updateft(i=numframes-1): #update ft and smoothed lc
         H=2*np.sqrt(H.real**2 + H.imag**2.)/len(ynew)
         ft.setData(1e6*f[len(f)/2.:],1e3*H[len(f)/2.:])
         #Smoothed LC
-        fluxsmoothed=filters.gaussian_filter1d(ynew,sigma=sigma)
-        ss1.setData(xnew,fluxsmoothed)
+        fluxsmoothed=filters.gaussian_filter1d(ynew[::oversample],sigma=sigma)
+        ss1.setData(xnew[::oversample],fluxsmoothed)
         #QtGui.QApplication.processEvents()
     
 
