@@ -1030,7 +1030,7 @@ def updateft(i=framenum):
 
 
 def updateft_old(i=framenum): #update ft and smoothed lc
-    if framenum < numframes-1:
+    if framenum < numframes:
         oversample=4. #Oversampling factor
         goodmask=np.ones(i+1, np.bool)
         goodmask[bad] = False
