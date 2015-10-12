@@ -584,9 +584,9 @@ numstars = 0 #0 means we haven't selected stars yet.
 #Star coords
 stars = [] #list of list of list of coords
 #Image data:
-img=[] #start with placeholder contents
+img=[] #only hold current image to save tiem
 #And another version to look nice
-displayimg=[]
+displayimg=[] #only hold current image to save tiem
 #Keep track of "Bad" points
 bad=[]
 #Elapsed timestamps
@@ -651,50 +651,46 @@ def processframe(i=0):
     #calibrate (doesn't do anything if calibration frames are not available):
     if darkExists: thisframe=(thisframe-dark)
     if flatExists: thisframe=thisframe/flat
+    #read in frame
+    img=np.transpose(thisframe)
+    backgroundmed,backgroundvar=charbackground()
     #append stuff to global variables
     #Replace if this frame already exists, otherwise append
     if i <= framenum: #replace
         #log('Re-processing frame '+str(i)+' of '+str(framenum))
-        img[i]=np.transpose(thisframe)
         rawtimes[i]=thistime['time_stamp_exposure_started']
-        backgroundmed,backgroundvar=charbackground(i=i)
         backmed[i]=backgroundmed
         backvar[i]=backgroundvar
     else: #append
         #log('Processing frame '+str(i)+' of '+str(framenum))
-        img.append(np.transpose(thisframe))
         rawtimes.append(thistime['time_stamp_exposure_started'])
-        backgroundmed,backgroundvar=charbackground(i=i)
         backmed.append(backgroundmed)
         backvar.append(backgroundvar)
     
     #make display image
-    newdisplayimg=np.copy(img[i])
+    newdisplayimg=np.copy(img)
     newdisplayimg[0,0]=0
     imgvals = newdisplayimg.flatten()
     img99percentile = np.percentile(imgvals,99)
     newdisplayimg[newdisplayimg > img99percentile] = img99percentile
     #log("Framenum: "+str(framenum),2)
     #Replace if this frame already exists, otherwise append
-    if i <= framenum: #replace
-        displayimg[i]=newdisplayimg
-    else: #append
-        displayimg.append(newdisplayimg)
-        framenum+=1
+    displayimg=newdisplayimg
+    framenum+=1
     
 #Function to characterize the background to find stellar centroids accurately
 #This should be done for each frame as it's read in
-def charbackground(i=framenum):
+def charbackground():
     """Characterize the image background, median and variance
 
-    i is frame number    
+    for frame currenly held in img  
     """
-    backgroundmed = biweight_location(img[i])
-    backgroundvar = biweight_midvariance(img[i])
+    backgroundmed = biweight_location(img)
+    backgroundvar = biweight_midvariance(img)
     return backgroundmed, backgroundvar        
  
 #show the image to the widget
-def displayFrame(i=framenum,autoscale=False,markstars=True):
+def displayFrame(autoscale=False,markstars=True):
     """Display an RBG image
     
     i is index to display
@@ -702,21 +698,16 @@ def displayFrame(i=framenum,autoscale=False,markstars=True):
     Return nothing.
     """
     #Make sure i is in range
-    if i < 0: i=0
-    if i > framenum: i=framenum
     if autoscale:
-        thisimg=displayimg[i]
         #lowlevel=np.min(thisimg[thisimg > 0])
-        lowlevel=np.percentile(thisimg[thisimg > 0],3)
-        highlevel=np.max(thisimg)-1
+        lowlevel=np.percentile(displayimg[displayimg > 0],3)
+        highlevel=np.max(displayimg)-1
         w5.setImage(np.array(displayimg),autoRange=True,levels=[lowlevel,highlevel],)
-        w5.setCurrentIndex(i)
     else:
         w5.setImage(np.array(displayimg),autoRange=False,autoLevels=False)
-        w5.setCurrentIndex(i)
     #Draw position circles:
-    if markstars and i <= len(stars) and len(stars) > 0:
-        targs.setData([p[0] for p in stars[i]],[p[1] for p in stars[i]])
+    if markstars and len(stars) > 0:
+        targs.setData([p[0] for p in stars[framenum]],[p[1] for p in stars[framenum]])
         targs.setSize(2.*apsizes[apsizeindex])
         targs.setPen(pencolors[0:numstars])
         
@@ -731,7 +722,7 @@ def selectstars():
     selectingstars = True
     
 
-def improvecoords(x,y,i=w5.currentIndex,pixdist=pixdist,fwhm=8.0,sigma=5.):
+def improvecoords(x,y,i=framenum,pixdist=pixdist,fwhm=8.0,sigma=5.):
     """Improve stellar centroid position from guess value. (one at a time)
 
     #return the adjustment than needs to be made in x and y directions
@@ -742,7 +733,7 @@ def improvecoords(x,y,i=w5.currentIndex,pixdist=pixdist,fwhm=8.0,sigma=5.):
     #Keep track of motion
     delta = np.zeros(2)
     #Get image subregion around guess position
-    subdata=img[i][x-pixdist:x+pixdist,y-pixdist:y+pixdist]
+    subdata=img[x-pixdist:x+pixdist,y-pixdist:y+pixdist]
     #print subdata.shape
     sources = daofind(subdata - backmed[i], sigma*backvar[i], fwhm,
                       sharplo=0.1, sharphi=1.5, roundlo=-2.0, roundhi=2.0)
@@ -877,7 +868,7 @@ def updatehack():
                 hasFooter = True
                 log('SPE footer detected. Data acquisition complete.',2)
                 stagechange(3)
-                displayFrame(i=numframes-1)
+                displayFrame()
         fsize_spe_old = fsize_spe_new
 
 def nextframehack():
@@ -888,9 +879,10 @@ def nextframehack():
     if framenum >= numframes-1:
         spe.close()
         timer.stop()
-        updateft()
+        updateft(i=framenum)
         if stage==3:
             log("Image processing complete",2)
+            timer3.stop()
         
 
 #This timer catches up on photometry
@@ -915,7 +907,7 @@ def nextframe():
         newcoords.append([np.floor(coord[0])+.5+dx,np.floor(coord[1])+.5+dy])        
     stars.append(newcoords)
     #Show the frame
-    displayFrame(i=framenum,markstars=True)
+    displayFrame(markstars=True)
     #Perform photometry
     dophot(i=framenum)
     #Update light curves
@@ -960,7 +952,7 @@ def dophot(i):
             #phot = aperture_photometry(x-background_mean,aperture,error=backgroundvar,gain=gain)
             #Why am I getting negative numbers?
             #phot = aperture_photometry(img[i]-np.median(img),aperture)
-            phot = aperture_photometry(img[i]-backmed[i],aperture)
+            phot = aperture_photometry(img-backmed[i],aperture)
             thisphotometry[n,j]=phot['aperture_sum'][0]
     #print "photometry ",thisphotometry
     if i == 0:
@@ -1002,30 +994,29 @@ def updateftfromtimer():
     updateft(i=framenum)
 
 def updateft(i=framenum):
-        if framenum < numframes-1:
-            oversample=4. #Oversampling factor
-            goodmask=np.ones(i+1, np.bool)
-            goodmask[bad] = False
-            targdivided = photresults[:i+1,0,apsizeindex]/photresults[:i+1,compstar,apsizeindex]
-            goodfluxnorm=targdivided[goodmask[:i+1]]/np.abs(np.mean(targdivided[goodmask[:i+1]]))
-            times = np.arange(i+1)#Multiply by exptime for timestamps
-            #Fourier Transform   and smoothed lc  
-            if goodmask.sum() > 2:
-                #This all requires at least two points
-                #Only update once per file read-in
-                interped = interp1d(exptime*times[goodmask[:i+1]],goodfluxnorm-1.)
-                xnew = np.arange(exptime*min(times[goodmask[:i]]),exptime*max(times[goodmask[:i+1]]),exptime)
-                ynew = interped(xnew)
-                #calculate FT
-                amp = np.abs(fft(ynew,n=len(ynew)*oversample))#FFT
-                amp /= float(len(amp))
-                freq = fftfreq(len(amp),d=exptime)
-                pos = freq>=0 # keep positive part
-                
-                ft.setData(1e6*freq[pos],1e3*amp[pos])
-                #Smoothed LC
-                fluxsmoothed=filters.gaussian_filter1d(ynew[::oversample],sigma=sigma)
-                ss1.setData(xnew[::oversample],fluxsmoothed)
+        oversample=4. #Oversampling factor
+        goodmask=np.ones(i+1, np.bool)
+        goodmask[bad] = False
+        targdivided = photresults[:i+1,0,apsizeindex]/photresults[:i+1,compstar,apsizeindex]
+        goodfluxnorm=targdivided[goodmask[:i+1]]/np.abs(np.mean(targdivided[goodmask[:i+1]]))
+        times = np.arange(i+1)#Multiply by exptime for timestamps
+        #Fourier Transform   and smoothed lc  
+        if goodmask.sum() > 2:
+            #This all requires at least two points
+            #Only update once per file read-in
+            interped = interp1d(exptime*times[goodmask[:i+1]],goodfluxnorm-1.)
+            xnew = np.arange(exptime*min(times[goodmask[:i]]),exptime*max(times[goodmask[:i+1]]),exptime)
+            ynew = interped(xnew)
+            #calculate FT
+            amp = np.abs(fft(ynew,n=len(ynew)*oversample))#FFT
+            amp /= float(len(amp))
+            freq = fftfreq(len(amp),d=exptime)
+            pos = freq>=0 # keep positive part
+            
+            ft.setData(1e6*freq[pos],1e3*amp[pos])
+            #Smoothed LC
+            fluxsmoothed=filters.gaussian_filter1d(ynew[::oversample],sigma=sigma)
+            ss1.setData(xnew[::oversample],fluxsmoothed)
     
 
 
