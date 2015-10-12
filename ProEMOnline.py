@@ -676,7 +676,6 @@ def processframe(i=0):
     #log("Framenum: "+str(framenum),2)
     #Replace if this frame already exists, otherwise append
     displayimg=newdisplayimg
-    log('framenum '+str(framenum)+' -> '+str(i))
     framenum=i
     
 #Function to characterize the background to find stellar centroids accurately
@@ -861,7 +860,8 @@ def updatehack():
         if fsize_spe_new > fsize_spe_old and stage ==2:
             spe = read_spe.File(spefile)
             numframes = spe.get_num_frames()
-            log('Processing frames '+str(framenum)+'-'+str(numframes-1),1)        
+            if framenum+1==numframes-1:log('Processing frame '+str(framenum+1))
+            else: log('Processing frames '+str(framenum+1)+'-'+str(numframes-1),1)        
             timer.start(10)
             #Update plots
             updatelcs(i=framenum)
