@@ -15,6 +15,7 @@ import numpy as np
 import pickle #for saving layouts
 from glob import glob
 from scipy import stats
+from scipy.fftpack import fft,fftfreq
 import os
 import csv
 import sys
@@ -1000,7 +1001,35 @@ def updatelcs(i):
 def updateftfromtimer():
     updateft(i=framenum)
 
-def updateft(i=framenum): #update ft and smoothed lc
+def updateft(i=framenum):
+        if framenum < numframes-1:
+            oversample=4. #Oversampling factor
+            goodmask=np.ones(i+1, np.bool)
+            goodmask[bad] = False
+            targdivided = photresults[:i+1,0,apsizeindex]/photresults[:i+1,compstar,apsizeindex]
+            goodfluxnorm=targdivided[goodmask[:i+1]]/np.abs(np.mean(targdivided[goodmask[:i+1]]))
+            times = np.arange(i+1)#Multiply by exptime for timestamps
+            #Fourier Transform   and smoothed lc  
+            if goodmask.sum() > 2:
+                #This all requires at least two points
+                #Only update once per file read-in
+                interped = interp1d(exptime*times[goodmask[:i+1]],goodfluxnorm-1.)
+                xnew = np.arange(exptime*min(times[goodmask[:i]]),exptime*max(times[goodmask[:i+1]]),exptime)
+                ynew = interped(xnew)
+                #calculate FT
+                amp = np.abs(fft(ynew,n=len(ynew)*oversample))#FFT
+                amp /= float(len(amp))
+                freq = fftfreq(len(amp),d=exptime)
+                pos = freq>=0 # keep positive part
+                
+                ft.setData(1e6*freq[pos],1e3*amp[pos])
+                #Smoothed LC
+                fluxsmoothed=filters.gaussian_filter1d(ynew[::oversample],sigma=sigma)
+                ss1.setData(xnew[::oversample],fluxsmoothed)
+    
+
+
+def updateft_old(i=framenum): #update ft and smoothed lc
     if framenum < numframes-1:
         oversample=4. #Oversampling factor
         goodmask=np.ones(i+1, np.bool)
