@@ -676,7 +676,8 @@ def processframe(i=0):
     #log("Framenum: "+str(framenum),2)
     #Replace if this frame already exists, otherwise append
     displayimg=newdisplayimg
-    framenum+=1
+    log('framenum '+str(framenum)+' -> '+str(i))
+    framenum=i
     
 #Function to characterize the background to find stellar centroids accurately
 #This should be done for each frame as it's read in
@@ -861,7 +862,7 @@ def updatehack():
             spe = read_spe.File(spefile)
             numframes = spe.get_num_frames()
             log('Processing frames '+str(framenum)+'-'+str(numframes-1),1)        
-            timer.start(100)
+            timer.start(10)
             #Update plots
             updatelcs(i=framenum)
             if hasattr(spe, 'footer_metadata'): 
@@ -1008,8 +1009,8 @@ def updateft(i=framenum):
             xnew = np.arange(exptime*min(times[goodmask[:i]]),exptime*max(times[goodmask[:i+1]]),exptime)
             ynew = interped(xnew)
             #calculate FT
-            amp = np.abs(fft(ynew,n=len(ynew)*oversample))#FFT
-            amp /= float(len(amp))
+            amp = 2.*np.abs(fft(ynew,n=len(ynew)*oversample))#FFT
+            amp /= float(len(ynew))
             freq = fftfreq(len(amp),d=exptime)
             pos = freq>=0 # keep positive part
             
