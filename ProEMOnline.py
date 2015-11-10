@@ -178,13 +178,15 @@ class WithMenu(QtGui.QMainWindow):
         
         Open dialog box, select file, verify that it is a SPE file.
         '''
-        fname = QtGui.QFileDialog.getOpenFileName(self, 'Open SPE file', 
-                defaultdir,filter='Data (*.spe)')
+        global defaultdir
+        fname = str(QtGui.QFileDialog.getOpenFileName(self, 'Open SPE file', 
+                defaultdir,filter='Data (*.spe)'))
         if fname[-4:]=='.spe':
             log("Opening file "+fname,1)
-            #self.spefile = fname #I don't think this line does anything.
+            #Set the default directory to a couple levels up from this file
+            defaultdir = os.path.dirname(os.path.dirname(fname))
             #This needs to trigger a major chain of events
-            stage1(str(fname))
+            stage1(fname)
         else: log("Invalid file type (must be SPE).",3)
         
     #Update the FT at user's command
