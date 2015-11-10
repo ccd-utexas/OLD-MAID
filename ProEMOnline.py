@@ -58,7 +58,7 @@ def stagechange(num):
 
 #### STAGE 0 ####
 #Set up the general GUI aspects
-defaultdir = 'D:'#where to search for SPE files
+defaultdir = 'D:/sync_to_White_Dwarf_Archive/'#where to search for SPE files
 
 
 #Set up main window with menu items
@@ -482,7 +482,7 @@ def click(event):#Linked to image click event
         #x and y are swapped in the GUI!
         x=pos.x()
         y=pos.y()
-        log('Clicked at ({:.2f}, {:.2f})'.format(x,y),level=0)
+        #log('Clicked at ({:.2f}, {:.2f})'.format(x,y),level=0)
         #improve coordinates
         dx,dy = improvecoords(x,y)
         #round originals so original position *within* pixel doesn't affect answer
@@ -541,7 +541,7 @@ win.raise_()
 # I think everything is set up enough to start doing stuff
 # Send initial message to process log.
 log("ProEMOnline initialized",2)
-log("Development version.  Do not trust.",3)
+#log("Development version.  Do not trust.",3)
 stagechange(0)
 log("Open SPE file to begin analysis.",1)
 
@@ -616,9 +616,9 @@ def stage1(fname):
     exptime=getexptime(spe)
     log('Inferred exposure time: '+str(exptime)+' s')
     if hasattr(spe, 'footer_metadata'): 
-        log('SPE file has footer.')
+        #log('SPE file has footer.')
         exptime=np.round(float(BeautifulSoup(spe.footer_metadata, "xml").find(name='ExposureTime').text)/1000.)
-        log('Exposute time from footer: '+str(exptime)+' s')
+        #log('Exposute time from footer: '+str(exptime)+' s')
     #now display the first frame
     processframe()
     displayFrame(autoscale=True,markstars=False)
@@ -740,8 +740,15 @@ def improvecoords(x,y,i=framenum,pixdist=pixdist,fwhm=8.0,sigma=5.):
     #From what I can tell, daofind returns x and y swapped, so fix it
     returnedx = sources['ycentroid']
     returnedy = sources['xcentroid']
+    
+    if len(sources) != 0:
+        strongsignal= np.argmax(sources['peak'])
+        delta[0]+=returnedx[strongsignal]-pixdist
+        delta[1]+=returnedy[strongsignal]-pixdist
+
 
     #check that unique source found
+    '''
     if len(sources) == 0:
         log("Frame #"+str(i),1)
         log("WARNING: no sources found in searched region near ({:.2f}, {:.2f}).".format(x,y))
@@ -752,9 +759,7 @@ def improvecoords(x,y,i=framenum,pixdist=pixdist,fwhm=8.0,sigma=5.):
             log("WARNING: non-unique solution found for target near ({:.2f}, {:.2f}).".format(x,y))
             log(str(len(sources))+" signals in window.  Using brightest.")
         #Take brightest star found
-        strongsignal= np.argmax(sources['peak'])
-        delta[0]+=returnedx[strongsignal]-pixdist
-        delta[1]+=returnedy[strongsignal]-pixdist
+    '''
 
     #handle stars that were not found #Move this outside this function
     """
@@ -791,7 +796,7 @@ r_out = 24. #outer sky annulus radius #change in terms of binning eventually
 def setApSize(size):
     global apsizeindex
     log("Aperture size set to "+str(size)+" pixels.",1)
-    log("(Updates on next frame.)")
+    #log("(Updates on next frame.)")
     if size in apsizes:
         apsizeindex=np.where(apsizes == size)[0][0]
         targs.setSize(2*size)# Currently doesn't update until next click/frame
@@ -861,7 +866,7 @@ def updatehack():
             spe = read_spe.File(spefile)
             numframes = spe.get_num_frames()
             if framenum+1==numframes-1:log('Processing frame '+str(framenum+1))
-            else: log('Processing frames '+str(framenum+1)+'-'+str(numframes-1),1)        
+            else: log('Processing frames '+str(framenum+1)+'-'+str(numframes),1)        
             timer.start(100)
             #Update plots
             updatelcs(i=framenum)
@@ -878,13 +883,13 @@ def nextframehack():
     nextframe()
     updatelcs(i=framenum)
     if framenum >= numframes-1:
-        spe.close()
         timer.stop()
         updateft(i=framenum)
+        spe.close()
         if stage==3:
             log("Image processing complete",2)
             timer3.stop()
-        
+            enddisplay()
 
 #This timer catches up on photometry
 timer = pg.QtCore.QTimer()#set up timer to avoid while loop
@@ -971,6 +976,12 @@ def dophot(i):
 sigma=3.
     
 
+def enddisplay():
+    #Change the end state of the display to a prettier image for the poster screenshot.
+    global spe
+    spe= read_spe.File(spefile)
+    processframe(i=100)
+    displayFrame(markstars=True)
 
 #Update display.
 def updatelcs(i):
@@ -995,7 +1006,7 @@ def updateftfromtimer():
     updateft(i=framenum)
 
 def updateft(i=framenum):
-        oversample=4. #Oversampling factor
+        oversample=10. #Oversampling factor
         goodmask=np.ones(i+1, np.bool)
         goodmask[bad] = False
         targdivided = photresults[:i+1,0,apsizeindex]/photresults[:i+1,compstar,apsizeindex]
@@ -1079,6 +1090,7 @@ class Stage2Thread(QtCore.QThread):
 
 ## Start Qt event loop unless running in interactive mode or using pyside.
 if __name__ == '__main__':
-    import sys
     if (sys.flags.interactive != 1) or not hasattr(QtCore, 'PYQT_VERSION'):
+        if len(sys.argv) > 1:
+            defaultdir = sys.argv[1]
         QtGui.QApplication.instance().exec_()
