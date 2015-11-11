@@ -98,17 +98,17 @@ class WithMenu(QtGui.QMainWindow):
         updateFT.triggered.connect(self.updateFTfunct)
         
         #Load dark for science frames
-        loadDark = QtGui.QAction('Load Dark SPE', self)
+        loadDark = QtGui.QAction('Load Darks', self)
         loadDark.setStatusTip('Open SPE Calibrations for Dark Subtracting Science Images')
         loadDark.triggered.connect(self.openDark)
         
         #Load dark for flat frames
-        loadDarkForFlats = QtGui.QAction('Load Dark for Flats', self)
+        loadDarkForFlats = QtGui.QAction('Load Darks for Flats', self)
         loadDarkForFlats.setStatusTip('Open SPE Calibrations for Dark Subtracting Flat Images')     
         loadDarkForFlats.triggered.connect(self.openDarkForFlats)
         
         #Load flat
-        loadFlat = QtGui.QAction('Load Flat SPE', self)
+        loadFlat = QtGui.QAction('Load Flats', self)
         loadFlat.setStatusTip('Open SPE Calibrations for Flatfielding Science Images')
         loadFlat.triggered.connect(self.openFlat)
         
@@ -266,7 +266,7 @@ class WithMenu(QtGui.QMainWindow):
             processframe()
             displayFrame(autoscale=True,markstars=False)
             hdulist.close()
-        else: log("Invalid file type (must be SPE).",3)
+        else: log("Invalid file type (must be SPE or FITS).",3)
         
         
     #Load Dark frames for flat calibration
@@ -331,11 +331,11 @@ class WithMenu(QtGui.QMainWindow):
             prihdr = hdulist[0].header
             darkForFlat=hdulist[0].data
             log("Mean dark counts: "+str(np.mean(darkForFlat)))
-            ddarkExistsForFlat = True
+            darkExistsForFlat = True
             processframe()
             displayFrame(autoscale=True,markstars=False)
             hdulist.close()            
-        else: log("Invalid file type (must be SPE).",3)        
+        else: log("Invalid file type (must be SPE or FITS).",3)        
         
         
     #Load Flat frames
@@ -344,11 +344,11 @@ class WithMenu(QtGui.QMainWindow):
         if darkExistsForFlat == False:
             log("Import dark for reducting flats before importing flat file.",3)
         else:
-            fname = QtGui.QFileDialog.getOpenFileName(self, 'Open SPE flat file', 
-                    defaultdir,filter='Data (*.spe)')
+            fname = str(QtGui.QFileDialog.getOpenFileName(self, 'Open SPE flat file', 
+                    defaultdir,filter='Data (*.spe *.fits)'))
             if fname[-4:]=='.spe':
                 log("Opening flat file "+fname,1)
-                fspe = read_spe.File(str(fname))
+                fspe = read_spe.File(fname)
                 num_flats=fspe.get_num_frames()
                 #get all frames in SPE file
                 #stack as 3D numpy array
@@ -365,9 +365,52 @@ class WithMenu(QtGui.QMainWindow):
                 flat=np.median(frames,axis=0)
                 flatExists=True
                 log("Median flat counts: "+str(np.median(modes)))
-                fspe.close()
                 processframe()
                 displayFrame(autoscale=True,markstars=False)
+                
+                #Write out fits file
+                #Set up header
+                prihdr = fits.Header()
+                prihdr['OBJECT'] = 'flat'
+                prihdr['IMAGETYP'] = 'flat'
+                
+                if hasattr(spe, 'footer_metadata'):
+                    footer_metadata = BeautifulSoup(fspe.footer_metadata, "xml")
+                    ts_begin = footer_metadata.find(name='TimeStamp', event='ExposureStarted').attrs['absoluteTime']
+                    dt_begin = dateutil.parser.parse(ts_begin)
+                    prihdr['TICKRATE'] = int(footer_metadata.find(name='TimeStamp', event='ExposureStarted').attrs['resolution'])
+                    prihdr['DATE-OBS'] = str(dt_begin.isoformat())
+                    prihdr['XBINNING'] = footer_metadata.find(name="SensorMapping").attrs['xBinning']
+                    prihdr['YBINNING'] = footer_metadata.find(name="SensorMapping").attrs['yBinning']
+                    prihdr['INSTRUME'] = footer_metadata.find(name="Camera").attrs['model']
+                    prihdr['TRIGGER'] = footer_metadata.find(name='TriggerResponse').text
+                    prihdr['COMMENT'] = "SPE file has footer metadata"
+                    prihdr['EXPTIME'] = str(float(footer_metadata.find(name='ExposureTime').text)/1000.)
+                    #prihdr['SOFTWARE'] = footer_metadata.find(name='Origin')
+                    prihdr['SHUTTER'] = footer_metadata.find(name='Mode').text
+                    prihdr['REDUCED'] = dt.datetime.now().isoformat()
+                else:
+                    prihdr['WARNING'] = "No XML footer metadata."
+                    log("No XML footer metadata.",3)
+                            #Set up fits object
+                hdu = fits.PrimaryHDU(flat,header=prihdr)
+                flatpath = os.path.dirname(fname)
+                fitsfilename = 'master_'+os.path.basename(fname).split('.spe')[0]+'.fits'
+                log("Writing master flat as "+fitsfilename)
+                hdu.writeto(os.path.join(flatpath, fitsfilename),clobber=True)
+                #Close SPE
+                fspe.close()
+            #Option to load as Fits
+            elif fname[-5:]=='.fits':
+                log("Opening flat file "+fname,1)
+                hdulist = fits.open(fname)
+                prihdr = hdulist[0].header
+                flat=hdulist[0].data
+                flatExists = True
+                processframe()
+                displayFrame(autoscale=True,markstars=False)
+                hdulist.close()            
+    
             else: log("Invalid file type (must be SPE).",3)
     
     
@@ -729,7 +772,7 @@ def stage1(fname):
     processframe()
     displayFrame(autoscale=True,markstars=False)
     #Load calibration frames and set up
-    log("Please load dark, flat, and dark for flat SPE files",1)
+    log("Please load dark, flat, and dark for flat files",1)
     dark = np.zeros(img[0].shape)
     flat = np.ones(img[0].shape)
     #Select stars:
