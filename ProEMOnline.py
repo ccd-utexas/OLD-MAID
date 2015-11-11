@@ -186,6 +186,8 @@ class WithMenu(QtGui.QMainWindow):
             #Set the default directory to a couple levels up from this file
             rundir = os.path.dirname(fname)
             defaultdir = os.path.dirname(rundir)
+            #set target log text as filename to start
+            targetEdit.setText(os.path.basename(fname)[:-4])
             
             #This needs to trigger a major chain of events
             stage1(fname)
