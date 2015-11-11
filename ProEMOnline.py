@@ -178,13 +178,15 @@ class WithMenu(QtGui.QMainWindow):
         
         Open dialog box, select file, verify that it is a SPE file.
         '''
-        global defaultdir
+        global defaultdir,rundir
         fname = str(QtGui.QFileDialog.getOpenFileName(self, 'Open SPE file', 
                 defaultdir,filter='Data (*.spe)'))
         if fname[-4:]=='.spe':
             log("Opening file "+fname,1)
             #Set the default directory to a couple levels up from this file
-            defaultdir = os.path.dirname(os.path.dirname(fname))
+            rundir = os.path.dirname(fname)
+            defaultdir = os.path.dirname(rundir)
+            
             #This needs to trigger a major chain of events
             stage1(fname)
         else: log("Invalid file type (must be SPE).",3)
@@ -300,6 +302,11 @@ class WithMenu(QtGui.QMainWindow):
                 log("No stars selected.  Select stars before running.",3)
             else:
                 numstars = len(stars)
+                #Write original coordinates to phot_coords.orig
+                f = open(rundir+'/phot_coords.orig', 'w')
+                for star in stars:
+                    f.write('{:.2f} {:.2f}\n'.format(star[0],star[1]))
+                f.close()
                 selectingstars=False
                 stage2()
             
@@ -515,7 +522,7 @@ stringcolors=['red','green','blue','magenta','orange','yellow',
               'darkred','darkgreen','darkblue','darkmagenta','darkorange','darkgoldenrod',
               'hotpink','seagreen','skyblue','salmon','brown','lightyellow']
 pencolors = [pg.mkPen(QtGui.QColor(c), width=3) for c in stringcolors]
-targs = pg.ScatterPlotItem(brush=None, pen=pencolors[0],symbol='o',pxMode=False,size=6)
+targs = pg.ScatterPlotItem(brush=None, pen=pencolors[0],symbol='o',pxMode=False,size=8)
 w5.addItem(targs)
 #Add widget to dock
 
@@ -563,6 +570,8 @@ log("Open SPE file to begin analysis.",1)
 spefile = ''
 #SPE Data
 spe=[]
+#SPE file directory
+rundir=''
 #Does SPE have a footer?
 hasFooter=False
 #Number of frames in currently read spe file
@@ -792,7 +801,7 @@ def improvecoords(x,y,i=framenum,pixdist=pixdist,fwhm=8.0,sigma=5.):
 
 #Aperture details (provide a way to change these!)
 apsizes=np.arange(1,11)
-apsizeindex=4
+apsizeindex=3
 r_in = 16.  #inner sky annulus radius #change in terms of binning eventually
 r_out = 24. #outer sky annulus radius #change in terms of binning eventually
 def setApSize(size):
