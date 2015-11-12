@@ -9,6 +9,7 @@ Keaton wrote this.
 
 
 #Import everything you'll need
+from __future__ import absolute_import, division
 import pyqtgraph as pg
 from pyqtgraph.Qt import QtCore, QtGui
 import numpy as np
@@ -16,6 +17,7 @@ import pickle #for saving layouts
 from glob import glob
 from scipy import stats
 from scipy.fftpack import fft,fftfreq
+import pandas as pd
 import os
 import csv
 import sys
@@ -1053,12 +1055,11 @@ def stage2():
         fsize_spe_old = fsize_spe_new
     '''
 
-
+fsize_spe_old = 0#Keep track if new spe file is larger that old one
 def updatehack():
-    global spe, hasFooter, numframes
+    global spe, hasFooter, numframes,fsize_spe_old
     #Only look for new data if not currently processing new data
     if not timer.isActive():
-        fsize_spe_old = 0
         #Update only if there's new data
         fsize_spe_new = os.path.getsize(spefile)
         
@@ -1072,9 +1073,7 @@ def updatehack():
             updatelcs(i=framenum)
             if hasattr(spe, 'footer_metadata'): 
                 hasFooter = True
-                log('SPE footer detected. Data acquisition complete.',2)
-                stagechange(3)
-                displayFrame(autoscale=True)
+                timer3.stop()
         fsize_spe_old = fsize_spe_new
 
 def nextframehack():
@@ -1085,10 +1084,14 @@ def nextframehack():
     if framenum >= numframes-1:
         timer.stop()
         updateft(i=framenum)
-        spe.close()
-        if stage==3:
+        if hasFooter:
+            log('SPE footer detected. Data acquisition complete.',2)
+            stagechange(3)
             log("Image processing complete",2)
-            timer3.stop()
+            writetimestamps()
+            displayFrame(autoscale=True)
+            
+        spe.close()
 
 #This timer catches up on photometry
 timer = pg.QtCore.QTimer()#set up timer to avoid while loop
@@ -1246,6 +1249,41 @@ class Stage2Thread(QtCore.QThread):
 
 '''
 
+
+#Write timestamps
+def writetimestamps():
+    fpath_csv = os.path.splitext(spefile)[0]+'_timestamps.csv'
+    log("Writing absolute timestamps to file "+fpath_csv,2)
+    if hasattr(spe, 'footer_metadata'):
+        footer_metadata = BeautifulSoup(spe.footer_metadata, "xml")
+        trigger_response = footer_metadata.find(name='TriggerResponse').text
+        ts_begin = footer_metadata.find(name='TimeStamp', event='ExposureStarted').attrs['absoluteTime']
+        dt_begin = dateutil.parser.parse(ts_begin)
+        ticks_per_second = int(footer_metadata.find(name='TimeStamp', event='ExposureStarted').attrs['resolution'])
+    else:
+        log(("No XML footer metadata.\n" +
+               "Unknown trigger response.\n" +
+               "Using file creation time as absolute timestamp.\n" +
+               "Assuming 1E6 ticks per seconds."),3)
+        trigger_response = ""
+        dt_begin = dt.datetime.utcfromtimestamp(os.path.getctime(fpath_spe))
+        ticks_per_second = 1E6
+    idx_metadata_map = {}
+    for idx in xrange(spe.get_num_frames()):
+        (frame, metadata) = spe.get_frame(idx)
+        idx_metadata_map[idx] = metadata
+    df_metadata = pd.DataFrame.from_dict(idx_metadata_map, orient='index')
+    df_metadata = df_metadata.set_index(keys='frame_tracking_number')
+    df_metadata = df_metadata[['time_stamp_exposure_started', 'time_stamp_exposure_ended']].applymap(lambda x: x / ticks_per_second)
+    df_metadata = df_metadata[['time_stamp_exposure_started', 'time_stamp_exposure_ended']].applymap(lambda x : dt_begin + dt.timedelta(seconds=x))
+    df_metadata[['diff_time_stamp_exposure_started', 'diff_time_stamp_exposure_ended']] = df_metadata - df_metadata.shift()
+    log("Trigger response = {tr}".format(tr=trigger_response))
+    log("Absolute timestamp = {dt_begin}".format(dt_begin=dt_begin))
+    log("Ticks per second = {tps}".format(tps=ticks_per_second))
+    df_metadata.head()
+    
+    # Write out as CSV to source directory of SPE file.
+    df_metadata.to_csv(fpath_csv, quoting=csv.QUOTE_NONNUMERIC)
 
 
 ## Start Qt event loop unless running in interactive mode or using pyside.
