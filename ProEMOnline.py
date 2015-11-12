@@ -1067,7 +1067,7 @@ def updatehack():
             spe = read_spe.File(spefile)
             numframes = spe.get_num_frames()
             if framenum+1==numframes-1:log('Processing frame '+str(framenum+1))
-            else: log('Processing frames '+str(framenum+1)+'-'+str(numframes),1)        
+            else: log('Processing frames '+str(framenum+1)+'-'+str(numframes-1),1)        
             timer.start(100)
             #Update plots
             updatelcs(i=framenum)
