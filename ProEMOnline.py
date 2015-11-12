@@ -401,7 +401,7 @@ class WithMenu(QtGui.QMainWindow):
                 prihdr['OBJECT'] = 'flat'
                 prihdr['IMAGETYP'] = 'flat'
                 
-                if hasattr(spe, 'footer_metadata'):
+                if hasattr(fspe, 'footer_metadata'):
                     footer_metadata = BeautifulSoup(fspe.footer_metadata, "xml")
                     ts_begin = footer_metadata.find(name='TimeStamp', event='ExposureStarted').attrs['absoluteTime']
                     dt_begin = dateutil.parser.parse(ts_begin)
