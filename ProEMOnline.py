@@ -200,7 +200,7 @@ class WithMenu(QtGui.QMainWindow):
         
     #Load Dark frames
     def openDark(self):
-        global dark, darkExists
+        global dark, darkExists, darkExp, darkDark
         fname = str(QtGui.QFileDialog.getOpenFileName(self, 'Open dark file', 
                 defaultdir,filter='Data (*.spe *.fits)'))
         if fname[-4:]=='.spe':
@@ -216,6 +216,7 @@ class WithMenu(QtGui.QMainWindow):
                 frames=np.concatenate((frames,[thisframe]),0)
             dark=np.median(frames,axis=0)
             darkExists = True
+            
             log("Mean dark counts: "+str(np.mean(dark)))
             processframe()
             displayFrame(autoscale=True,markstars=False)
@@ -238,12 +239,18 @@ class WithMenu(QtGui.QMainWindow):
                 prihdr['INSTRUME'] = footer_metadata.find(name="Camera").attrs['model']
                 prihdr['TRIGGER'] = footer_metadata.find(name='TriggerResponse').text
                 prihdr['COMMENT'] = "SPE file has footer metadata"
+                darkExp=np.round(float(footer_metadata.find(name='ExposureTime').text)/1000.)
+                if darkExp != exptime:
+                    log("Exp times for dark and science frames do not match!",3)
+                log("Exposure time for dark: "+str(darkExp)+" s")
                 prihdr['EXPTIME'] = str(float(footer_metadata.find(name='ExposureTime').text)/1000.)
                 #prihdr['SOFTWARE'] = footer_metadata.find(name='Origin')
                 prihdr['SHUTTER'] = footer_metadata.find(name='Mode').text
                 if footer_metadata.find(name='Mode').text != 'AlwaysClosed':
                     prihdr['WARNING'] = 'Shutter not closed for dark frame.'
                     log("Shutter not closed for dark frame.",3)
+                else:
+                    darkDark=True
             else:
                 prihdr['WARNING'] = "No XML footer metadata."
                 log("No XML footer metadata.",3)
@@ -261,7 +268,16 @@ class WithMenu(QtGui.QMainWindow):
             hdulist = fits.open(fname)
             prihdr = hdulist[0].header
             dark=hdulist[0].data
+            darkExp = np.round(float(prihdr['EXPTIME']))
+            if darkExp != exptime:
+                log("Exp times for dark and science frames do not match!",3)
+            log("Exposure time for dark: "+str(darkExp)+" s")
             log("Mean dark counts: "+str(np.mean(dark)))
+            if prihdr['SHUTTER'] != 'AlwaysClosed':
+                prihdr['WARNING'] = 'Shutter not closed for dark frame.'
+                log("Shutter not closed for dark frame.",3)
+            else:
+                darkDark=True
             darkExists = True
             processframe()
             displayFrame(autoscale=True,markstars=False)
@@ -271,7 +287,7 @@ class WithMenu(QtGui.QMainWindow):
         
     #Load Dark frames for flat calibration
     def openDarkForFlats(self):
-        global darkForFlat, darkExistsForFlat
+        global darkForFlat, darkForFlatExists, darkForFlatExp, darkForFlatDark
         fname = str(QtGui.QFileDialog.getOpenFileName(self, 'Open SPE dark for flat calibration', 
                 defaultdir,filter='Data (*.spe *.fits)'))
         if fname[-4:]=='.spe':
@@ -286,7 +302,7 @@ class WithMenu(QtGui.QMainWindow):
                 (thisframe,_)=dspe.get_frame(i)
                 frames=np.concatenate((frames,[thisframe]),0)
             darkForFlat=np.median(frames,axis=0)
-            darkExistsForFlat = True
+            darkForFlatExists = True
             log("Mean dark counts for flat: "+str(np.mean(darkForFlat)))
             
             #Write out master dark file as fits     
@@ -307,12 +323,16 @@ class WithMenu(QtGui.QMainWindow):
                 prihdr['INSTRUME'] = footer_metadata.find(name="Camera").attrs['model']
                 prihdr['TRIGGER'] = footer_metadata.find(name='TriggerResponse').text
                 prihdr['COMMENT'] = "SPE file has footer metadata"
+                darkForFlatExp=np.round(float(footer_metadata.find(name='ExposureTime').text)/1000.)
+                log("Exposure time for dark for flat: "+str(darkForFlatExp)+" s")
                 prihdr['EXPTIME'] = str(float(footer_metadata.find(name='ExposureTime').text)/1000.)
                 #prihdr['SOFTWARE'] = footer_metadata.find(name='Origin')
                 prihdr['SHUTTER'] = footer_metadata.find(name='Mode').text
                 if footer_metadata.find(name='Mode').text != 'AlwaysClosed':
                     prihdr['WARNING'] = 'Shutter not closed for dark frame.'
                     log("Shutter not closed for dark frame.",3)
+                else:
+                    darkForFlatDark=True
             else:
                 prihdr['WARNING'] = "No XML footer metadata."
                 log("No XML footer metadata.",3)
@@ -330,8 +350,15 @@ class WithMenu(QtGui.QMainWindow):
             hdulist = fits.open(fname)
             prihdr = hdulist[0].header
             darkForFlat=hdulist[0].data
+            darkForFlatExp = np.round(float(prihdr['EXPTIME']))
+            log("Exposure time for dark for flat: "+str(darkForFlatExp)+" s")
             log("Mean dark counts: "+str(np.mean(darkForFlat)))
-            darkExistsForFlat = True
+            if prihdr['SHUTTER'] != 'AlwaysClosed':
+                prihdr['WARNING'] = 'Shutter not closed for dark frame.'
+                log("Shutter not closed for dark frame for flat.",3)
+            else:
+                darkForFlatDark=True
+            darkForFlatExists = True
             processframe()
             displayFrame(autoscale=True,markstars=False)
             hdulist.close()            
@@ -340,13 +367,13 @@ class WithMenu(QtGui.QMainWindow):
         
     #Load Flat frames
     def openFlat(self):
-        global flat, flatExists
-        if darkExistsForFlat == False:
-            log("Import dark for reducting flats before importing flat file.",3)
-        else:
-            fname = str(QtGui.QFileDialog.getOpenFileName(self, 'Open SPE flat file', 
-                    defaultdir,filter='Data (*.spe *.fits)'))
-            if fname[-4:]=='.spe':
+        global flat, flatExists, flatReduced
+        fname = str(QtGui.QFileDialog.getOpenFileName(self, 'Open SPE flat file', 
+                defaultdir,filter='Data (*.spe *.fits)'))
+        if fname[-4:]=='.spe':
+            if darkForFlatExists == False:
+                log("Import dark for reducting flats before importing flat SPE file.",3)
+            else:
                 log("Opening flat file "+fname,1)
                 fspe = read_spe.File(fname)
                 num_flats=fspe.get_num_frames()
@@ -384,8 +411,16 @@ class WithMenu(QtGui.QMainWindow):
                     prihdr['YBINNING'] = footer_metadata.find(name="SensorMapping").attrs['yBinning']
                     prihdr['INSTRUME'] = footer_metadata.find(name="Camera").attrs['model']
                     prihdr['TRIGGER'] = footer_metadata.find(name='TriggerResponse').text
+                    prihdr['MODE'] = 1 #normalized
                     prihdr['COMMENT'] = "SPE file has footer metadata"
                     prihdr['EXPTIME'] = str(float(footer_metadata.find(name='ExposureTime').text)/1000.)
+                    flatexptime = np.round(float(footer_metadata.find(name='ExposureTime').text)/1000.)
+                    #check that dark exp time matches flat
+                    if flatexptime == darkForFlatExp:
+                        flatReduced = True
+                    else:
+                        log("Exp times for dark and flat do not match!",3)
+                        log(str(flatexptime) + "  " + str(darkForFlatExp))
                     #prihdr['SOFTWARE'] = footer_metadata.find(name='Origin')
                     prihdr['SHUTTER'] = footer_metadata.find(name='Mode').text
                     prihdr['REDUCED'] = dt.datetime.now().isoformat()
@@ -393,26 +428,33 @@ class WithMenu(QtGui.QMainWindow):
                     prihdr['WARNING'] = "No XML footer metadata."
                     log("No XML footer metadata.",3)
                             #Set up fits object
-                hdu = fits.PrimaryHDU(flat,header=prihdr)
-                flatpath = os.path.dirname(fname)
-                fitsfilename = 'master_'+os.path.basename(fname).split('.spe')[0]+'.fits'
-                log("Writing master flat as "+fitsfilename)
-                hdu.writeto(os.path.join(flatpath, fitsfilename),clobber=True)
+                #Only write flat if properly dark subtracted:
+                if darkForFlatDark and flatReduced:
+                    hdu = fits.PrimaryHDU(flat,header=prihdr)
+                    flatpath = os.path.dirname(fname)
+                    fitsfilename = 'master_'+os.path.basename(fname).split('.spe')[0]+'.fits'
+                    log("Writing master flat as "+fitsfilename)
+                    hdu.writeto(os.path.join(flatpath, fitsfilename),clobber=True)
                 #Close SPE
                 fspe.close()
-            #Option to load as Fits
-            elif fname[-5:]=='.fits':
-                log("Opening flat file "+fname,1)
-                hdulist = fits.open(fname)
-                prihdr = hdulist[0].header
-                flat=hdulist[0].data
-                flatExists = True
-                processframe()
-                displayFrame(autoscale=True,markstars=False)
-                hdulist.close()            
-    
-            else: log("Invalid file type (must be SPE).",3)
-    
+        #Option to load as Fits
+        elif fname[-5:]=='.fits':
+            log("Opening flat file "+fname,1)
+            hdulist = fits.open(fname)
+            prihdr = hdulist[0].header
+            flat=hdulist[0].data
+            flatExists = True
+            flatmode= float(prihdr["mode"])
+            if flatmode == 1: #Properly normalized?
+                flatReduced=True
+            else:
+                log("Mode of master flat is "+str(flatmode)+". Not properly normalized?",3)
+            processframe()
+            displayFrame(autoscale=True,markstars=False)
+            hdulist.close()            
+
+        else: log("Invalid file type (must be SPE).",3)
+
     
     #Restore previously "bad" points
     def restorePts(self):
@@ -719,11 +761,18 @@ exptime=1. #If it can't be figured out, plots are in terms of frame #
 #Dark data
 dark = []
 darkExists=False
+darkExp=0 #exp time should match spe exptime
+darkDark=False #shutter closed?
 darkForFlat = []
-darkExistsForFlat=False
+darkForFlatExists=False
+darkForFlatExp=0
+darkForFlatDark=False
 #Flat data
 flat = []
 flatExists=False
+flatReduced=False #proper dark subtracted?
+#Flag whether full reductions are being done (*correct* darks and flat)
+
 #Number of last *reduced* (photometry measures) frame
 framenum=-1 #none yet
 #Flag to indicate whether we are currently selecting stars in the frame:
@@ -849,7 +898,9 @@ def displayFrame(autoscale=False,markstars=True):
     #Make sure i is in range
     if autoscale:
         #lowlevel=np.min(thisimg[thisimg > 0])
-        lowlevel=np.percentile(displayimg[displayimg > 0],3)
+        lowlevel=np.min(displayimg)
+        if np.sum(displayimg > 0) > 100:
+            lowlevel=np.percentile(displayimg[displayimg > 0],3)
         highlevel=np.max(displayimg)-1
         w5.setImage(np.array(displayimg),autoRange=True,levels=[lowlevel,highlevel],)
     else:
@@ -978,8 +1029,8 @@ def stage2():
     updatelcs(i=0)
     updatehack()
     #Start timer that looks for new data
-    timer2.start(exptime*1000.)
-    timer3.start(10.*60*1000)#update every 10 minutes
+    timer2.start(min(exptime*1000.,5000.))# shorter of exptime and 5 sec
+    timer3.start(1.*60*1000)#update every 1 minutes
     #This currently freezes up the UI.  Need to thread, but not enough time
     #to implement this currently.  Use a hack for now
     '''
@@ -1023,7 +1074,7 @@ def updatehack():
                 hasFooter = True
                 log('SPE footer detected. Data acquisition complete.',2)
                 stagechange(3)
-                displayFrame()
+                displayFrame(autoscale=True)
         fsize_spe_old = fsize_spe_new
 
 def nextframehack():
@@ -1038,7 +1089,6 @@ def nextframehack():
         if stage==3:
             log("Image processing complete",2)
             timer3.stop()
-            enddisplay()
 
 #This timer catches up on photometry
 timer = pg.QtCore.QTimer()#set up timer to avoid while loop
@@ -1062,7 +1112,7 @@ def nextframe():
         newcoords.append([np.floor(coord[0])+.5+dx,np.floor(coord[1])+.5+dy])        
     stars.append(newcoords)
     #Show the frame
-    displayFrame(markstars=True)
+    displayFrame(autoscale=True,markstars=True)
     #Perform photometry
     dophot(i=framenum)
     #Update light curves
@@ -1123,14 +1173,7 @@ def dophot(i):
 #define smoothing parameters For smoothed light curve for scipy.signal.savgol_filter
 #winsize = 11.#win size in frames (must be odd)
 sigma=3.
-    
 
-def enddisplay():
-    #Change the end state of the display to a prettier image for the poster screenshot.
-    global spe
-    spe= read_spe.File(spefile)
-    processframe(i=100)
-    displayFrame(markstars=True)
 
 #Update display.
 def updatelcs(i):
@@ -1178,38 +1221,6 @@ def updateft(i=framenum):
             #Smoothed LC
             fluxsmoothed=filters.gaussian_filter1d(ynew[::oversample],sigma=sigma)
             ss1.setData(xnew[::oversample],fluxsmoothed)
-    
-
-
-def updateft_old(i=framenum): #update ft and smoothed lc
-    if framenum < numframes:
-        oversample=4. #Oversampling factor
-        goodmask=np.ones(i+1, np.bool)
-        goodmask[bad] = False
-        targdivided = photresults[:i+1,0,apsizeindex]/photresults[:i+1,compstar,apsizeindex]
-        goodfluxnorm=targdivided[goodmask[:i+1]]/np.abs(np.mean(targdivided[goodmask[:i+1]]))
-        times = np.arange(i+1)#Multiply by exptime for timestamps
-        #Fourier Transform   and smoothed lc  
-        if goodmask.sum() > 2:
-            #This all requires at least two points
-            #Only update once per file read-in
-            interped = interp1d(exptime*times[goodmask[:i+1]],goodfluxnorm-1.)
-            xnew = np.arange(exptime*min(times[goodmask[:i+1]]),exptime*max(times[goodmask[:i+1]]),exptime/oversample)
-            ynew = interped(xnew)
-            #number of samples must be even for FT_continuous
-            f=0
-            H=0        
-            if xnew.size % 2 == 0:
-                f,H = FT_continuous(xnew,ynew)
-            else:
-                f,H = FT_continuous(xnew[:-1],ynew[:-1])
-            H=2*np.sqrt(H.real**2 + H.imag**2.)/len(ynew)
-            ft.setData(1e6*f[len(f)/2.:],1e3*H[len(f)/2.:])
-            #Smoothed LC
-            fluxsmoothed=filters.gaussian_filter1d(ynew[::oversample],sigma=sigma)
-            ss1.setData(xnew[::oversample],fluxsmoothed)
-            #QtGui.QApplication.processEvents()
-        
 
 
 #This timer recomputes the FT and smoothed lc infrequently
