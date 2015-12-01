@@ -422,7 +422,9 @@ class WithMenu(QtGui.QMainWindow):
                         flatReduced = True
                     else:
                         log("Exp times for dark and flat do not match!",3)
-                        log(str(flatexptime) + "  " + str(darkForFlatExp))
+                        if darkForFlatExp == 0:
+                            log("Bias being used for flat subtraction.",1)
+                            flatReduced=True
                     #prihdr['SOFTWARE'] = footer_metadata.find(name='Origin')
                     prihdr['SHUTTER'] = footer_metadata.find(name='Mode').text
                     prihdr['REDUCED'] = dt.datetime.now().isoformat()
@@ -686,7 +688,7 @@ def click(event):#Linked to image click event
         targs.setPen(pencolors[0:len(stars)])
         #Set up plot for raw counts in second panel:
         rawcounts.append(pg.ScatterPlotItem(pen=pencolors[len(stars)-1],symbol='o',size=1))
-        log('Star selected at ({:.2f}, {:.2f})'.format(newcoords[0],newcoords[1]),level=2)
+        log('Star selected at ({:.2f}, {:.2f})'.format(newcoords[0],newcoords[1]),level=1)
         
     elif event.button() == 2: 
         event.accept()#Passed on to other functionality if not accepted.
