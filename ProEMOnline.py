@@ -422,7 +422,9 @@ class WithMenu(QtGui.QMainWindow):
                         flatReduced = True
                     else:
                         log("Exp times for dark and flat do not match!",3)
-                        log(str(flatexptime) + "  " + str(darkForFlatExp))
+                        if darkForFlatExp == 0:
+                            log("Bias being used for flat subtraction.",1)
+                            flatReduced=True
                     #prihdr['SOFTWARE'] = footer_metadata.find(name='Origin')
                     prihdr['SHUTTER'] = footer_metadata.find(name='Mode').text
                     prihdr['REDUCED'] = dt.datetime.now().isoformat()
