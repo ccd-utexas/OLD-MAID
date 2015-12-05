@@ -16,7 +16,7 @@ from __future__ import absolute_import, division, print_function
 import os
 
 #CD to script location
-#os.chdir('C:/Users/admin/Documents/GitHub/tsphot')
+os.chdir('C:/Users/admin/Documents/GitHub/tsphot')
 
 # More Standard libraries.
 import sys
