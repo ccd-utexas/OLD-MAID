@@ -19,6 +19,7 @@ from scipy import stats
 from scipy.fftpack import fft,fftfreq
 import pandas as pd
 import os
+import subprocess
 import csv
 import sys
 import time
@@ -93,11 +94,17 @@ class WithMenu(QtGui.QMainWindow):
         runPhot.setStatusTip('Run Aperture Photometry on Frames')
         runPhot.triggered.connect(self.run)
         
-        #Run Photometry
+        #Update FT
         updateFT = QtGui.QAction('&Update FT', self)
         updateFT.setShortcut('Ctrl+U')
         updateFT.setStatusTip('Update Fourier Transform with Current Light Curve')
         updateFT.triggered.connect(self.updateFTfunct)
+        
+        #Run Autoguider
+        autoguide = QtGui.QAction('Feed to &Autoguider', self)
+        autoguide.setShortcut('Ctrl+A')
+        autoguide.setStatusTip('Send most recently acquired frame to Guide82')
+        autoguide.triggered.connect(self.toAutoguider)
         
         #Load dark for science frames
         loadDark = QtGui.QAction('Load Darks', self)
@@ -136,6 +143,7 @@ class WithMenu(QtGui.QMainWindow):
         fileMenu.addAction(openFile)
         fileMenu.addAction(runPhot)
         fileMenu.addAction(updateFT)
+        fileMenu.addAction(autoguide)
         fileMenu.addAction(exitAction)
         #Calibrations Menu
         calibrationsMenu = menubar.addMenu('Calibrations')
@@ -200,6 +208,13 @@ class WithMenu(QtGui.QMainWindow):
         global framenum
         updateft(i=framenum)
         
+        
+    def toAutoguider(self):
+        if spefile != '':
+            log("Opening separate program to send incoming data to Guide82.",2)
+            subprocess.Popen(["python",os.path.join(os.path.dirname(os.path.abspath(__file__)),'toAutoguider.py'),spefile])
+        else:
+            log("Open SPE file first before trying to send data to Guide82.",3)
     #Load Dark frames
     def openDark(self):
         global dark, darkExists, darkExp, darkDark
