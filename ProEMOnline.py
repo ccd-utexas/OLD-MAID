@@ -1190,10 +1190,11 @@ def dophot(i):
     #yay.  This deserves to all be checked very carefully, especially since the gain only affects uncertainty and not overall counts.
 
 
-#define smoothing parameters For smoothed light curve for scipy.signal.savgol_filter
-#winsize = 11.#win size in frames (must be odd)
-sigma=3.
-
+#define smoothing parameters For smoothed light curve
+winsize = 11.#win size in frames (must be odd)
+u=(2.*np.arange(winsize)/(winsize-1))-0.5 #number from -1 to 1
+kernel = 0.75*(1.-u**2.) #Epanechnikov kernel
+kernel /= np.sum(kernel) #normalize
 
 #Update display.
 def updatelcs(i):
@@ -1239,8 +1240,8 @@ def updateft(i=framenum):
             
             ft.setData(1e6*freq[pos],1e3*amp[pos])
             #Smoothed LC
-            fluxsmoothed=filters.gaussian_filter1d(ynew[::oversample],sigma=sigma)
-            ss1.setData(xnew[::oversample],fluxsmoothed)
+            fluxsmoothed=np.convolve(ynew,kernel,mode='same')
+            ss1.setData(xnew,fluxsmoothed)
 
 
 #This timer recomputes the FT and smoothed lc infrequently
