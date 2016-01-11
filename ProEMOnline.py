@@ -1301,6 +1301,17 @@ def writetimestamps():
     
     # Write out as CSV to source directory of SPE file.
     df_metadata.to_csv(fpath_csv, quoting=csv.QUOTE_NONNUMERIC)
+    saveScreenshot()
+
+
+
+def saveScreenshot():
+    ssfilename=os.path.splitext(spefile)[0]+'_OLDMAID.png'
+    log("Writing screenshot to file "+ssfilename,2)
+    p=QtGui.QPixmap.grabWidget(area)
+    writeout = p.save(ssfilename, 'png')
+    if not writeout: log("Saving screenshot failed!",3)
+
 
 
 ## Start Qt event loop unless running in interactive mode or using pyside.
