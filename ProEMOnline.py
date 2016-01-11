@@ -1190,11 +1190,27 @@ def dophot(i):
     #yay.  This deserves to all be checked very carefully, especially since the gain only affects uncertainty and not overall counts.
 
 
-#define smoothing parameters For smoothed light curve
-winsize = 11.#win size in frames (must be odd)
-u=(2.*np.arange(winsize)/(winsize-1))-0.5 #number from -1 to 1
-kernel = 0.75*(1.-u**2.) #Epanechnikov kernel
-kernel /= np.sum(kernel) #normalize
+#set up a class that holds all the smoothing kernel information
+class smoothingkernel:
+    """Holds all smoothing kernel info"""
+    kerneltype = 0
+    width = 11 #points
+    kernel=[]
+    #Types: 0 = Epanechnikov, 1 = Uniform
+    def setkernel(self,kerneltype,width):
+        if kerneltype == 0: #Epanechnikov
+            u=(2.*np.arange(width)/(float(width)-1.))-0.5
+            self.kernel = 0.75*(1.-u**2.)
+            self.kernel /= np.sum(self.kernel)
+            log("Using Epanechnikov smoothing kernel of width "+str(width))
+        elif kerneltype == 1: #Uniform
+            self.kernel = np.ones(width)/float(width)
+            log("Using uniform smoothing kernel of width "+str(width))
+    def __init__(self):
+        self.setkernel(0,11)
+
+#set up the kernel object
+kernel=smoothingkernel()
 
 #Update display.
 def updatelcs(i):
@@ -1240,7 +1256,7 @@ def updateft(i=framenum):
             
             ft.setData(1e6*freq[pos],1e3*amp[pos])
             #Smoothed LC
-            fluxsmoothed=np.convolve(ynew,kernel,mode='same')
+            fluxsmoothed=np.convolve(ynew,kernel.kernel,mode='same')
             ss1.setData(xnew,fluxsmoothed)
 
 
