@@ -962,7 +962,23 @@ def improvecoords(x,y,i=framenum,pixdist=pixdist,fwhm=8.0,sigma=5.):
     #Keep track of motion
     delta = np.zeros(2)
     #Get image subregion around guess position
-    subdata=img[x-pixdist:x+pixdist,y-pixdist:y+pixdist]
+    #Need to be careful not to ask for out-of-range indexes near a border
+    x0=x-pixdist
+    y0=y-pixdist
+    xdist=2*pixdist
+    ydist=2*pixdist
+    if x0 < 0: #if near the left edge
+        x0 = 0 #subregion from near given position
+        delta[0] += pixdist-x #adjust delta accordingly
+    if y0 < 0: #same in the y direction
+        y0 = 0
+        delta[1] += pixdist-y
+    if x+pixdist > img.shape[0]:
+        xdist = img.shape[0]-x+pixdist
+    if y+pixdist > img.shape[1]:
+        ydist = img.shape[1]-y+pixdist
+    #if x+pixdist > s
+    subdata=img[x0:x0+xdist,y0:y0+ydist]
     #print subdata.shape
     sources = daofind(subdata - backmed[i], sigma*backvar[i], fwhm,
                       sharplo=0.1, sharphi=1.5, roundlo=-2.0, roundhi=2.0)
