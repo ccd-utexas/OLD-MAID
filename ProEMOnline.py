@@ -512,10 +512,10 @@ class WithMenu(QtGui.QMainWindow):
                 log("No stars selected.  Select stars before running.",3)
             else:
                 numstars = len(stars)
-                #Write original coordinates to phot_coords.orig
+                #Write original coordinates and seeing to phot_coords.orig
                 f = open(rundir+'/phot_coords.orig', 'w')
-                for star in stars:
-                    f.write('{:.2f} {:.2f}\n'.format(star[0],star[1]))
+                for j,star in enumerate(stars):
+                    f.write('{:.2f} {:.2f} {:.2f}\n'.format(star[0],star[1],seeing[j]))
                 f.close()
                 selectingstars=False
                 stage2()
