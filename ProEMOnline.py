@@ -136,6 +136,12 @@ class WithMenu(QtGui.QMainWindow):
         loadLayout.setStatusTip('Load a saved dock layout')
         loadLayout.triggered.connect(self.loadLayout)
         
+        #changeSmoothing
+        changeSmoothing = QtGui.QAction('Change Smoothing', self)
+        changeSmoothing.setStatusTip('Change Light Curve Smoothing Parameters.')
+        changeSmoothing.triggered.connect(self.changeSmooth)
+        
+        
         #Menubar
         menubar = self.menuBar()
         #File Menu
@@ -155,6 +161,7 @@ class WithMenu(QtGui.QMainWindow):
         interactionsMenu.addAction(restorePoints)
         self.changeApertureMenu = interactionsMenu.addMenu('Select Aperture Size')
         self.changeCompStarMenu = interactionsMenu.addMenu('Select Comp Star for Division')
+        interactionsMenu.addAction(changeSmoothing)
         #Layout Menu
         layoutMenu = menubar.addMenu('Layout')
         layoutMenu.addAction(saveLayout)
@@ -490,7 +497,10 @@ class WithMenu(QtGui.QMainWindow):
     #Set up comp star selection menu options
     def addCompStarOption(self,i): 
         self.changeCompStarMenu.addAction('Comp Star #'+str(i),lambda s=i: setCompStar(s))
-            
+    
+    #Change Smoothing parameters
+    def changeSmooth(self):
+        kernel.openKernelDialog()
     
     #Run Photometry
     def run(self):
@@ -1190,11 +1200,73 @@ def dophot(i):
     #yay.  This deserves to all be checked very carefully, especially since the gain only affects uncertainty and not overall counts.
 
 
-#define smoothing parameters For smoothed light curve
-winsize = 11.#win size in frames (must be odd)
-u=(2.*np.arange(winsize)/(winsize-1))-0.5 #number from -1 to 1
-kernel = 0.75*(1.-u**2.) #Epanechnikov kernel
-kernel /= np.sum(kernel) #normalize
+#Allow different kernel types:
+kerneltypes = ['Uniform','Epanechnikov']
+
+#set up a dialog to change the kernel details:
+class KernelDialog(QtGui.QDialog):
+    def __init__(self, parent=None):
+        super(KernelDialog, self).__init__(parent)
+        typeLabel = QtGui.QLabel("Kernel &type")
+        self.typeEdit = QtGui.QComboBox()
+        self.typeEdit.addItems(kerneltypes)
+        widthLabel = QtGui.QLabel("Kernel &width")
+        self.widthEdit = QtGui.QSpinBox()
+        self.widthEdit.setMinimum(2)
+        self.widthEdit.setMaximum(200)
+        self.buttons = QtGui.QDialogButtonBox(QtGui.QDialogButtonBox.Ok | QtGui.QDialogButtonBox.Cancel,
+                                        QtCore.Qt.Horizontal, self)
+        self.buttons.accepted.connect(self.accept)
+        self.buttons.rejected.connect(self.reject)
+        
+        grid = QtGui.QGridLayout(self)
+        grid.addWidget(typeLabel,0,0)
+        grid.addWidget(self.typeEdit,0,1)
+        grid.addWidget(widthLabel,1,0)
+        grid.addWidget(self.widthEdit,1,1)
+        grid.addWidget(self.buttons, 3, 0)
+        self.setLayout(grid)
+
+        self.setWindowTitle("Define Smoothing Kernel")
+    def kernelFormat(self):
+        kerneltype=int(self.typeEdit.currentIndex())
+        width=int(self.widthEdit.value())
+        return (kerneltype,width)
+        
+    @staticmethod
+    def getKernelFormat(parent = None):
+        dialog = KernelDialog(parent)
+        result = dialog.exec_()
+        kerneltype,width = dialog.kernelFormat()
+        return (kerneltype,width, result == QtGui.QDialog.Accepted)
+
+
+#set up a class that holds all the smoothing kernel information
+class smoothingkernel:
+    """Holds all smoothing kernel info"""
+    kerneltype = 0
+    width = 11 #points
+    kernel=[]
+    types = kerneltypes
+    def setkernel(self,kerneltype,width):
+        if kerneltype == 1: #Epanechnikov
+            u=(2.*np.arange(width)/(float(width)-1.))-0.5
+            self.kernel = 0.75*(1.-u**2.)
+            self.kernel /= np.sum(self.kernel)
+            log("Using "+self.types[kerneltype]+" smoothing kernel of width "+str(width))
+        elif kerneltype == 0: #Uniform
+            self.kernel = np.ones(width)/float(width)
+            log("Using "+self.types[kerneltype]+" smoothing kernel of width "+str(width))
+    def openKernelDialog(self):
+            dkerneltype,dwidth,daccepted = KernelDialog.getKernelFormat()
+            if daccepted and (dkerneltype in range(len(kerneltypes))) and (dwidth > 1): 
+                self.setkernel(dkerneltype,dwidth)
+    def __init__(self):
+        self.setkernel(0,11)
+
+#set up the kernel object
+kernel=smoothingkernel()
+
 
 #Update display.
 def updatelcs(i):
@@ -1240,8 +1312,10 @@ def updateft(i=framenum):
             
             ft.setData(1e6*freq[pos],1e3*amp[pos])
             #Smoothed LC
-            fluxsmoothed=np.convolve(ynew,kernel,mode='same')
-            ss1.setData(xnew,fluxsmoothed)
+            #Update if there are enough points:
+            if len(ynew) > kernel.width:
+                fluxsmoothed=np.convolve(ynew,kernel.kernel,mode='same')
+                ss1.setData(xnew,fluxsmoothed)
 
 
 #This timer recomputes the FT and smoothed lc infrequently
