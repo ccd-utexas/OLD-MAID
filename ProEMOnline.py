@@ -16,6 +16,7 @@ import numpy as np
 import pickle #for saving layouts
 from glob import glob
 from scipy import stats
+from scipy.optimize import curve_fit
 from scipy.fftpack import fft,fftfreq
 import pandas as pd
 import os
@@ -675,10 +676,10 @@ w8.addItem(sky)
 d8.addWidget(w8)
 
 ## Seeing
-w9 = pg.PlotWidget(title="Seeing (not yet implemented)",labels={'left': 'seeing (")', 'bottom': 'time (s)'})
-seeing = pg.PlotCurveItem()
-w9.addItem(seeing) #Placeholder for now
+w9 = pg.PlotWidget(title="Seeing",labels={'left': 'FWHM (pixels)', 'bottom': 'time (s)'})
 d9.addWidget(w9)
+#Hold the individual plot items in this list once they are created:
+seeingplots = []
 
 
 ## Fourier Transform
@@ -693,7 +694,7 @@ w5.ui.roiBtn.hide()
 #w5.ui.normBtn.hide() #Causing trouble on windows
 #Define function for selecting stars. (must be defined before linking the click action)
 def click(event):#Linked to image click event
-    global stars
+    global stars, seeing
     if event.button() == 1 and selectingstars:
         event.accept()
         pos = event.pos()
@@ -702,17 +703,19 @@ def click(event):#Linked to image click event
         y=pos.y()
         #log('Clicked at ({:.2f}, {:.2f})'.format(x,y),level=0)
         #improve coordinates
-        dx,dy = improvecoords(x,y)
+        dx,dy,newseeing = improvecoords(x,y)
         #round originals so original position *within* pixel doesn't affect answer
         newcoords=[np.floor(x)+dx,np.floor(y)+dy]
         stars.append(newcoords)
+        seeing.append(newseeing)
         #make menuoption for comp star selection
         if len(stars) > 1: win.addCompStarOption(len(stars)-1)
         #Mark stars in image display
         targs.setData([p[0] for p in stars],[p[1] for p in stars])
         targs.setPen(pencolors[0:len(stars)])
-        #Set up plot for raw counts in second panel:
+        #Set up plot for raw counts and seeing:
         rawcounts.append(pg.ScatterPlotItem(pen=pencolors[len(stars)-1],symbol='o',size=1))
+        seeingplots.append(pg.PlotCurveItem(pen=pencolors[len(stars)-1]))
         log('Star selected at ({:.2f}, {:.2f})'.format(newcoords[0],newcoords[1]),level=1)
         
     elif event.button() == 2: 
@@ -736,6 +739,7 @@ w5.addItem(targs)
 #Add widget to dock
 
 d5.addWidget(w5)
+
 
 
 ## Show the program!
@@ -824,6 +828,8 @@ pixdist=10 #(super)pixels
 backmed=[]
 #List of background variances
 backvar=[]
+#Seeing for each star,frame:
+seeing=[]
 #Binning
 binning=4
 
@@ -950,12 +956,15 @@ def selectstars():
     global selectingstars
     selectingstars = True
     
+def gaussian(x, A, mu, sigma):
+    #Define a gaussian for finding FWHM
+    return A*np.exp(-(x-mu)**2/(2.*sigma**2))
 
 def improvecoords(x,y,i=framenum,pixdist=pixdist,fwhm=8.0,sigma=5.):
     """Improve stellar centroid position from guess value. (one at a time)
 
     #return the adjustment than needs to be made in x and y directions
-    #NOTE: This may have trouble near edges.
+    #also calculate the FWHM seeing
     """
     #x=(1024/binning)-x
     #y=(1024/binning)-y
@@ -977,7 +986,6 @@ def improvecoords(x,y,i=framenum,pixdist=pixdist,fwhm=8.0,sigma=5.):
         xdist = img.shape[0]-x+pixdist
     if y+pixdist > img.shape[1]:
         ydist = img.shape[1]-y+pixdist
-    #if x+pixdist > s
     subdata=img[x0:x0+xdist,y0:y0+ydist]
     #print subdata.shape
     sources = daofind(subdata - backmed[i], sigma*backvar[i], fwhm,
@@ -986,10 +994,27 @@ def improvecoords(x,y,i=framenum,pixdist=pixdist,fwhm=8.0,sigma=5.):
     returnedx = sources['ycentroid']
     returnedy = sources['xcentroid']
     
+    thisseeing = 0.    
+    
     if len(sources) != 0:
         strongsignal= np.argmax(sources['peak'])
         delta[0]+=returnedx[strongsignal]-pixdist
         delta[1]+=returnedy[strongsignal]-pixdist
+        seeingdata = subdata.flatten() - backmed[i]
+        dist = []
+        for i in np.arange(subdata.shape[1])+0.5:
+            for j in np.arange(subdata.shape[0])+0.5:
+                dist.append(np.sqrt((returnedx[strongsignal]-j)**2.
+                +(returnedy[strongsignal]-i)**2.)) 
+        dist=np.array(dist).flatten()#distance between new coord and pixel centers
+        popt,_  = curve_fit(gaussian,dist,seeingdata)
+        thisseeing = np.abs(popt[-1])*2.3548
+        #Fit with a gaussian
+        
+    else:
+        delta=np.zeros(2)
+
+    #also measure the seeing in this step:
 
 
     #check that unique source found
@@ -1014,7 +1039,7 @@ def improvecoords(x,y,i=framenum,pixdist=pixdist,fwhm=8.0,sigma=5.):
         delta[np.where(delta[:,0] == 0)] += [meandeltax,meandeltay]
     """
 
-    return delta[0],delta[1]
+    return delta[0],delta[1],thisseeing
 
 
 
@@ -1062,13 +1087,16 @@ photresults=np.array([])
 
 #Run the stage 2 loop
 def stage2():
-    global stars, spe, stage, hasFooter
+    global stars,seeing, spe, stage, hasFooter
     stagechange(2)
     #Add plot items for raw counts panel to plot
     for splot in rawcounts: w7.addItem(splot)
+    for splot in seeingplots: w9.addItem(splot)
     #Make stars array an array of arrays of star coord arrays (yikes)
     # i.e, it needs to get pushed a level deeper
     stars=[stars]
+    #same with seeing
+    seeing=np.array([seeing])
     #Run photometry on the first frame
     dophot(0)
     updatelcs(i=0)
@@ -1148,15 +1176,18 @@ timer2.timeout.connect(updatehack)
 
 #For demo purposes, read in the next frame of the spe file each time this is called
 def nextframe():
-    global stars
+    global stars, seeing
     #if stage == 2:
     oldcoords = stars[framenum]
     processframe(i=framenum+1) #Frame num increases here.
     newcoords=[]
+    newseeing=[]
     for coord in oldcoords:
-        dx,dy = improvecoords(coord[0],coord[1],i=framenum)
-        newcoords.append([np.floor(coord[0])+.5+dx,np.floor(coord[1])+.5+dy])        
+        dx,dy,thisseeing = improvecoords(coord[0],coord[1],i=framenum)
+        newcoords.append([np.floor(coord[0])+.5+dx,np.floor(coord[1])+.5+dy]) 
+        newseeing.append(thisseeing)
     stars.append(newcoords)
+    seeing = np.append(seeing,[newseeing],axis=0)
     #Show the frame
     displayFrame(autoscale=True,markstars=True)
     #Perform photometry
@@ -1304,6 +1335,8 @@ def updatelcs(i):
     #sl1.setData(times[goodmask[:i]],fluxsmoothed[goodmask[:i]])
     #Raw Counts:
     for j,splot in enumerate(rawcounts): splot.setData(exptime*times,photresults[:,j,apsizeindex])
+    #Seeing:
+    for j,splot in enumerate(seeingplots[::-1]): splot.setData(exptime*times,seeing[:,j])
     #Sky brightness
     sky.setData(exptime*times,backmed)
 
