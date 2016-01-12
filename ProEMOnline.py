@@ -956,9 +956,9 @@ def selectstars():
     global selectingstars
     selectingstars = True
     
-def gaussian(x, A, mu, sigma):
+def gaussian(x, A, sigma):
     #Define a gaussian for finding FWHM
-    return A*np.exp(-(x-mu)**2/(2.*sigma**2))
+    return A*np.exp(-(x)**2/(2.*sigma**2))
 
 def improvecoords(x,y,i=framenum,pixdist=pixdist,fwhm=8.0,sigma=5.):
     """Improve stellar centroid position from guess value. (one at a time)
@@ -1000,16 +1000,16 @@ def improvecoords(x,y,i=framenum,pixdist=pixdist,fwhm=8.0,sigma=5.):
         strongsignal= np.argmax(sources['peak'])
         delta[0]+=returnedx[strongsignal]-pixdist
         delta[1]+=returnedy[strongsignal]-pixdist
+        #Fit with a gaussian
         seeingdata = subdata.flatten() - backmed[i]
         dist = []
         for i in np.arange(subdata.shape[1])+0.5:
             for j in np.arange(subdata.shape[0])+0.5:
-                dist.append(np.sqrt((returnedx[strongsignal]-j)**2.
-                +(returnedy[strongsignal]-i)**2.)) 
+                dist.append(np.sqrt((returnedy[strongsignal]-j)**2.
+                            +(returnedx[strongsignal]-i)**2.)) 
         dist=np.array(dist).flatten()#distance between new coord and pixel centers
-        popt,_  = curve_fit(gaussian,dist,seeingdata)
+        popt,_  = curve_fit(gaussian,np.append(dist,dist*-1.),np.append(seeingdata,seeingdata))
         thisseeing = np.abs(popt[-1])*2.3548
-        #Fit with a gaussian
         
     else:
         delta=np.zeros(2)
