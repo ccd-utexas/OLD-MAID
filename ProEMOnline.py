@@ -1210,10 +1210,14 @@ class KernelDialog(QtGui.QDialog):
         typeLabel = QtGui.QLabel("Kernel &type")
         self.typeEdit = QtGui.QComboBox()
         self.typeEdit.addItems(kerneltypes)
+        #self.typeEdit.setCurrentIndex(currentind)
+        typeLabel.setBuddy(self.typeEdit)
         widthLabel = QtGui.QLabel("Kernel &width")
         self.widthEdit = QtGui.QSpinBox()
         self.widthEdit.setMinimum(2)
         self.widthEdit.setMaximum(200)
+        #self.widthEdit.setValue(currentwidth)
+        widthLabel.setBuddy(self.widthEdit)
         self.buttons = QtGui.QDialogButtonBox(QtGui.QDialogButtonBox.Ok | QtGui.QDialogButtonBox.Cancel,
                                         QtCore.Qt.Horizontal, self)
         self.buttons.accepted.connect(self.accept)
@@ -1245,7 +1249,7 @@ class KernelDialog(QtGui.QDialog):
 class smoothingkernel:
     """Holds all smoothing kernel info"""
     kerneltype = 0
-    width = 11 #points
+    width = 10 #points
     kernel=[]
     types = kerneltypes
     def setkernel(self,kerneltype,width):
@@ -1262,7 +1266,7 @@ class smoothingkernel:
             if daccepted and (dkerneltype in range(len(kerneltypes))) and (dwidth > 1): 
                 self.setkernel(dkerneltype,dwidth)
     def __init__(self):
-        self.setkernel(0,11)
+        self.setkernel(0,10)
 
 #set up the kernel object
 kernel=smoothingkernel()
