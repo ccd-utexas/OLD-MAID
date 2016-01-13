@@ -679,6 +679,8 @@ d8.addWidget(w8)
 ## Seeing
 w9 = pg.PlotWidget(title="Seeing",labels={'left': 'FWHM (pixels)', 'bottom': 'time (s)'})
 d9.addWidget(w9)
+gridlines = pg.GridItem()
+w9.addItem(gridlines)
 #Hold the individual plot items in this list once they are created:
 seeingplots = []
 
@@ -716,7 +718,7 @@ def click(event):#Linked to image click event
         targs.setPen(pencolors[0:len(stars)])
         #Set up plot for raw counts and seeing:
         rawcounts.append(pg.ScatterPlotItem(pen=pencolors[len(stars)-1],symbol='o',size=1))
-        seeingplots.append(pg.PlotCurveItem(pen=pencolors[len(stars)-1]))
+        seeingplots.append(pg.PlotCurveItem(pen=seeingcolors[len(stars)-1]))
         log('Star selected at ({:.2f}, {:.2f})'.format(newcoords[0],newcoords[1]),level=1)
         
     elif event.button() == 2: 
@@ -735,6 +737,7 @@ stringcolors=['red','green','blue','magenta','orange','yellow',
               'darkred','darkgreen','darkblue','darkmagenta','darkorange','darkgoldenrod',
               'hotpink','seagreen','skyblue','salmon','brown','lightyellow']
 pencolors = [pg.mkPen(QtGui.QColor(c), width=3) for c in stringcolors]
+seeingcolors = [pg.mkPen(QtGui.QColor(c), width=1.5) for c in stringcolors]
 targs = pg.ScatterPlotItem(brush=None, pen=pencolors[0],symbol='o',pxMode=False,size=8)
 w5.addItem(targs)
 #Add widget to dock
@@ -1439,9 +1442,15 @@ def writetimestamps():
     saveScreenshot()
 
 
+#Return a string of the current time
+def timestring():
+    date = dt.datetime.now()
+    return date.strftime('%Y%m%d_%Hh%Mm%Ss')
 
+
+#Function to save a screenshot
 def saveScreenshot():
-    ssfilename=os.path.splitext(spefile)[0]+'_OLDMAID.png'
+    ssfilename=os.path.splitext(spefile)[0]+'_'+timestring()+'.png'
     log("Writing screenshot to file "+ssfilename,2)
     p=QtGui.QPixmap.grabWidget(area)
     writeout = p.save(ssfilename, 'png')
