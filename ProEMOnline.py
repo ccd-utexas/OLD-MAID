@@ -34,6 +34,7 @@ from photutils import daofind
 from photutils import CircularAperture, CircularAnnulus, aperture_photometry
 from pyqtgraph.dockarea import *
 from bs4 import BeautifulSoup
+import matplotlib.pyplot as plt
 # Local modules.
 import read_spe
 
@@ -960,7 +961,7 @@ def gaussian(x, A, sigma):
     #Define a gaussian for finding FWHM
     return A*np.exp(-(x)**2/(2.*sigma**2))
 
-def improvecoords(x,y,i=framenum,pixdist=pixdist,fwhm=8.0,sigma=5.):
+def improvecoords(x,y,i=framenum,pixdist=pixdist,fwhm=4.0,sigma=5.):
     """Improve stellar centroid position from guess value. (one at a time)
 
     #return the adjustment than needs to be made in x and y directions
@@ -1008,12 +1009,15 @@ def improvecoords(x,y,i=framenum,pixdist=pixdist,fwhm=8.0,sigma=5.):
                 dist.append(np.sqrt((returnedy[strongsignal]-k)**2.
                             +(returnedx[strongsignal]-j)**2.))
         dist=np.array(dist).flatten()#distance between new coord and pixel centers
+        #plt.scatter(dist,seeingdata)
         try: #ignores error if max iterations is hit        
             p0=[1000.,4.]#initial guesses
             popt,_  = curve_fit(gaussian,np.append(dist,dist*-1.),np.append(seeingdata,seeingdata),p0=p0)
             thisseeing = np.abs(popt[-1])*2.3548
+            #plt.plot(np.arange(0,10,.1),gaussian(np.arange(0,10,.1),popt[0],popt[1]))
         except RuntimeError:
             print "ERROR: gaussian fit did not converge for a star in frame "+str(i)
+        #plt.show()
     else:
         delta=np.zeros(2)
 
