@@ -13,7 +13,6 @@ from __future__ import absolute_import, division
 import pyqtgraph as pg
 from pyqtgraph.Qt import QtCore, QtGui
 import numpy as np
-import bottleneck as bn
 import pickle #for saving layouts
 from glob import glob
 from scipy import stats
