@@ -13,6 +13,7 @@ from __future__ import absolute_import, division
 import pyqtgraph as pg
 from pyqtgraph.Qt import QtCore, QtGui
 import numpy as np
+import bottleneck as bn
 import pickle #for saving layouts
 from glob import glob
 from scipy import stats
@@ -27,7 +28,6 @@ import time
 import datetime as dt
 import dateutil.parser
 from astropy.io import fits
-from astroML.fourier import FT_continuous
 from scipy.interpolate import interp1d
 import scipy.ndimage.filters as filters
 from astropy.stats import biweight_location, biweight_midvariance
@@ -412,7 +412,8 @@ class WithMenu(QtGui.QMainWindow):
                 for i in range(1,num_flats):
                     (thisframe,_)=fspe.get_frame(i)
                     thisframe = thisframe-darkForFlat
-                    modes.append(stats.mode(thisframe.flatten())[0][0])
+                    #modes.append(stats.mode(thisframe.flatten())[0][0])
+                    modes.append(np.median(thisframe.flatten()))
                     frames=np.concatenate((frames,[thisframe/modes[i]]),0)
                 flat=np.median(frames,axis=0)
                 flatExists=True
@@ -994,7 +995,7 @@ def improvecoords(x,y,i=framenum,pixdist=pixdist,fwhm=8.0,sigma=5.):
     returnedx = sources['ycentroid']
     returnedy = sources['xcentroid']
     
-    thisseeing = 0.    
+    thisseeing = np.nan 
     
     if len(sources) != 0:
         strongsignal= np.argmax(sources['peak'])
@@ -1003,14 +1004,16 @@ def improvecoords(x,y,i=framenum,pixdist=pixdist,fwhm=8.0,sigma=5.):
         #Fit with a gaussian
         seeingdata = subdata.flatten() - backmed[i]
         dist = []
-        for i in np.arange(subdata.shape[1])+0.5:
-            for j in np.arange(subdata.shape[0])+0.5:
-                dist.append(np.sqrt((returnedy[strongsignal]-j)**2.
-                            +(returnedx[strongsignal]-i)**2.)) 
+        for j in np.arange(subdata.shape[1])+0.5:
+            for k in np.arange(subdata.shape[0])+0.5:
+                dist.append(np.sqrt((returnedy[strongsignal]-k)**2.
+                            +(returnedx[strongsignal]-j)**2.)) 
         dist=np.array(dist).flatten()#distance between new coord and pixel centers
-        popt,_  = curve_fit(gaussian,np.append(dist,dist*-1.),np.append(seeingdata,seeingdata))
-        thisseeing = np.abs(popt[-1])*2.3548
-        
+        try: #ignores error if max iterations is hit        
+            popt,_  = curve_fit(gaussian,np.append(dist,dist*-1.),np.append(seeingdata,seeingdata))
+            thisseeing = np.abs(popt[-1])*2.3548
+        except RuntimeError:
+            print "ERROR: gaussian fit did not converge for a star in frame "+str(i)
     else:
         delta=np.zeros(2)
 
