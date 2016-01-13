@@ -1006,10 +1006,11 @@ def improvecoords(x,y,i=framenum,pixdist=pixdist,fwhm=8.0,sigma=5.):
         for j in np.arange(subdata.shape[1])+0.5:
             for k in np.arange(subdata.shape[0])+0.5:
                 dist.append(np.sqrt((returnedy[strongsignal]-k)**2.
-                            +(returnedx[strongsignal]-j)**2.)) 
+                            +(returnedx[strongsignal]-j)**2.))
         dist=np.array(dist).flatten()#distance between new coord and pixel centers
         try: #ignores error if max iterations is hit        
-            popt,_  = curve_fit(gaussian,np.append(dist,dist*-1.),np.append(seeingdata,seeingdata))
+            p0=[1000.,4.]#initial guesses
+            popt,_  = curve_fit(gaussian,np.append(dist,dist*-1.),np.append(seeingdata,seeingdata),p0=p0)
             thisseeing = np.abs(popt[-1])*2.3548
         except RuntimeError:
             print "ERROR: gaussian fit did not converge for a star in frame "+str(i)
