@@ -7,13 +7,13 @@ PyQtGraph dockarea system and was designed from the dockarea.py example.
 Keaton wrote this.
 """
 
-
 #Import everything you'll need
 from __future__ import absolute_import, division
 import pyqtgraph as pg
 from pyqtgraph.Qt import QtCore, QtGui
 import numpy as np
 import pickle #for saving layouts
+from functools import partial
 from glob import glob
 from scipy import stats
 from scipy.optimize import curve_fit
@@ -37,6 +37,22 @@ from bs4 import BeautifulSoup
 import matplotlib.pyplot as plt
 # Local modules.
 import read_spe
+
+
+#Return a string of the current time
+def timestring():
+    date = dt.datetime.now()
+    return date.strftime('%Y%m%d_%Hh%Mm%Ss')
+
+
+#Function to save a screenshot
+def saveScreenshot():
+    ssfilename=os.path.splitext(spefile)[0]+'_'+timestring()+'.png'
+    log("Writing screenshot to file "+ssfilename,2)
+    p=QtGui.QPixmap.grabWidget(area)
+    writeout = p.save(ssfilename, 'png')
+    if not writeout: log("Saving screenshot failed!",3)
+
 
 
 
@@ -74,7 +90,6 @@ class WithMenu(QtGui.QMainWindow):
         self.initUI()
         
     def initUI(self):      
-
         #SETUP THE MENUBAR!
         #Note: Exit is protected on Mac.  This works on Windows.
         exitAction = QtGui.QAction('Exit', self)        
@@ -142,6 +157,12 @@ class WithMenu(QtGui.QMainWindow):
         changeSmoothing.setStatusTip('Change Light Curve Smoothing Parameters.')
         changeSmoothing.triggered.connect(self.changeSmooth)
         
+        #save screenshot
+        screenshot = QtGui.QAction('Save Screenshot', self)
+        screenshot.setStatusTip('Save a Screenshot of the Main Window.')
+        savescreenshot = partial(saveScreenshot)
+        screenshot.triggered.connect(savescreenshot)
+        
         
         #Menubar
         menubar = self.menuBar()
@@ -167,6 +188,9 @@ class WithMenu(QtGui.QMainWindow):
         layoutMenu = menubar.addMenu('Layout')
         layoutMenu.addAction(saveLayout)
         layoutMenu.addAction(loadLayout)
+        #Output Menu
+        outputMenu = menubar.addMenu('Output')
+        outputMenu.addAction(screenshot)
         
 
     #Functions to save and load layouts
@@ -1442,19 +1466,7 @@ def writetimestamps():
     saveScreenshot()
 
 
-#Return a string of the current time
-def timestring():
-    date = dt.datetime.now()
-    return date.strftime('%Y%m%d_%Hh%Mm%Ss')
 
-
-#Function to save a screenshot
-def saveScreenshot():
-    ssfilename=os.path.splitext(spefile)[0]+'_'+timestring()+'.png'
-    log("Writing screenshot to file "+ssfilename,2)
-    p=QtGui.QPixmap.grabWidget(area)
-    writeout = p.save(ssfilename, 'png')
-    if not writeout: log("Saving screenshot failed!",3)
 
 
 
