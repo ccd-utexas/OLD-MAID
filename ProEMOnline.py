@@ -37,6 +37,7 @@ from bs4 import BeautifulSoup
 import matplotlib.pyplot as plt
 # Local modules.
 import read_spe
+import mainvars as mv
 
 
 #Return a string of the current time
@@ -47,7 +48,7 @@ def timestring():
 
 #Function to save a screenshot
 def saveScreenshot():
-    ssfilename=os.path.splitext(spefile)[0]+'_'+timestring()+'.png'
+    ssfilename=os.path.splitext(mv.spefile)[0]+'_'+timestring()+'.png'
     log("Writing screenshot to file "+ssfilename,2)
     p=QtGui.QPixmap.grabWidget(area)
     writeout = p.save(ssfilename, 'png')
@@ -66,19 +67,16 @@ def saveScreenshot():
 #Stage 2 - Online data reduction and aperture photometry/plotting is being done.
 #Stage 3 - End of data acquisition detected. Final data written to file.  Timestamps verified.  Log saved.  Weather/time log data saved.
 # -> revert back to Stage 0.
-stage=0 #start at 0
 def stagechange(num):
-    global stage
     if num in range(4):
         log("Program stage = "+str(num),1)
-        stage=num
+        mv.stage=num
     else: log("Attempt to change stage to invalid value ("+str(num)+")",3)
 
 
 
 #### STAGE 0 ####
 #Set up the general GUI aspects
-defaultdir = 'D:/sync_to_White_Dwarf_Archive/'#where to search for SPE files
 
 
 #Set up main window with menu items
@@ -220,14 +218,13 @@ class WithMenu(QtGui.QMainWindow):
         
         Open dialog box, select file, verify that it is a SPE file.
         '''
-        global defaultdir,rundir
         fname = str(QtGui.QFileDialog.getOpenFileName(self, 'Open SPE file', 
-                defaultdir,filter='Data (*.spe)'))
+                mv.defaultdir,filter='Data (*.spe)'))
         if fname[-4:]=='.spe':
             log("Opening file "+fname,1)
             #Set the default directory to a couple levels up from this file
-            rundir = os.path.dirname(fname)
-            defaultdir = os.path.dirname(rundir)
+            mv.rundir = os.path.dirname(fname)
+            mv.defaultdir = os.path.dirname(mv.rundir)
             #set target log text as filename to start
             targetEdit.setText(os.path.basename(fname)[:-4])
             
@@ -237,21 +234,19 @@ class WithMenu(QtGui.QMainWindow):
         
     #Update the FT at user's command
     def updateFTfunct(self):
-        global framenum
-        updateft(i=framenum)
+        updateft(i=mv.framenum)
         
         
     def toAutoguider(self):
-        if spefile != '':
+        if mv.spefile != '':
             log("Opening separate program to send incoming data to Guide82.",2)
-            subprocess.Popen(["python",os.path.join(os.path.dirname(os.path.abspath(__file__)),'toAutoguider.py'),spefile])
+            subprocess.Popen(["python",os.path.join(os.path.dirname(os.path.abspath(__file__)),'toAutoguider.py'),mv.spefile])
         else:
             log("Open SPE file first before trying to send data to Guide82.",3)
     #Load Dark frames
     def openDark(self):
-        global dark, darkExists, darkExp, darkDark
         fname = str(QtGui.QFileDialog.getOpenFileName(self, 'Open dark file', 
-                defaultdir,filter='Data (*.spe *.fits)'))
+                mv.defaultdir,filter='Data (*.spe *.fits)'))
         if fname[-4:]=='.spe':
             log("Opening dark file "+fname,1)
             dspe = read_spe.File(fname)
@@ -263,10 +258,10 @@ class WithMenu(QtGui.QMainWindow):
             for i in range(1,num_darks):
                 (thisframe,_)=dspe.get_frame(i)
                 frames=np.concatenate((frames,[thisframe]),0)
-            dark=np.median(frames,axis=0)
-            darkExists = True
+            mv.dark=np.median(frames,axis=0)
+            mv.darkExists = True
             
-            log("Mean dark counts: "+str(np.mean(dark)))
+            log("Mean dark counts: "+str(np.mean(mv.dark)))
             processframe()
             displayFrame(autoscale=True,markstars=False)
             
@@ -288,10 +283,10 @@ class WithMenu(QtGui.QMainWindow):
                 prihdr['INSTRUME'] = footer_metadata.find(name="Camera").attrs['model']
                 prihdr['TRIGGER'] = footer_metadata.find(name='TriggerResponse').text
                 prihdr['COMMENT'] = "SPE file has footer metadata"
-                darkExp=np.round(float(footer_metadata.find(name='ExposureTime').text)/1000.)
-                if darkExp != exptime:
+                mv.darkExp=np.round(float(footer_metadata.find(name='ExposureTime').text)/1000.)
+                if mv.darkExp != mv.exptime:
                     log("Exp times for dark and science frames do not match!",3)
-                log("Exposure time for dark: "+str(darkExp)+" s")
+                log("Exposure time for dark: "+str(mv.darkExp)+" s")
                 prihdr['EXPTIME'] = str(float(footer_metadata.find(name='ExposureTime').text)/1000.)
                 #prihdr['SOFTWARE'] = footer_metadata.find(name='Origin')
                 prihdr['SHUTTER'] = footer_metadata.find(name='Mode').text
@@ -299,12 +294,12 @@ class WithMenu(QtGui.QMainWindow):
                     prihdr['WARNING'] = 'Shutter not closed for dark frame.'
                     log("Shutter not closed for dark frame.",3)
                 else:
-                    darkDark=True
+                    mv.darkDark=True
             else:
                 prihdr['WARNING'] = "No XML footer metadata."
                 log("No XML footer metadata.",3)
             #Set up fits object
-            hdu = fits.PrimaryHDU(dark,header=prihdr)
+            hdu = fits.PrimaryHDU(mv.dark,header=prihdr)
             darkpath = os.path.dirname(fname)
             fitsfilename = 'master_'+os.path.basename(fname).split('.spe')[0]+'.fits'
             log("Writing master dark as "+fitsfilename)
@@ -316,18 +311,18 @@ class WithMenu(QtGui.QMainWindow):
             log("Opening dark file "+fname,1)
             hdulist = fits.open(fname)
             prihdr = hdulist[0].header
-            dark=hdulist[0].data
-            darkExp = np.round(float(prihdr['EXPTIME']))
-            if darkExp != exptime:
+            mv.dark=hdulist[0].data
+            mv.darkExp = np.round(float(prihdr['EXPTIME']))
+            if mv.darkExp != mv.exptime:
                 log("Exp times for dark and science frames do not match!",3)
-            log("Exposure time for dark: "+str(darkExp)+" s")
+            log("Exposure time for dark: "+str(mv.darkExp)+" s")
             log("Mean dark counts: "+str(np.mean(dark)))
             if prihdr['SHUTTER'] != 'AlwaysClosed':
                 prihdr['WARNING'] = 'Shutter not closed for dark frame.'
                 log("Shutter not closed for dark frame.",3)
             else:
-                darkDark=True
-            darkExists = True
+                mv.darkDark=True
+            mv.darkExists = True
             processframe()
             displayFrame(autoscale=True,markstars=False)
             hdulist.close()
@@ -336,9 +331,8 @@ class WithMenu(QtGui.QMainWindow):
         
     #Load Dark frames for flat calibration
     def openDarkForFlats(self):
-        global darkForFlat, darkForFlatExists, darkForFlatExp, darkForFlatDark
         fname = str(QtGui.QFileDialog.getOpenFileName(self, 'Open SPE dark for flat calibration', 
-                defaultdir,filter='Data (*.spe *.fits)'))
+                mv.defaultdir,filter='Data (*.spe *.fits)'))
         if fname[-4:]=='.spe':
             log("Opening dark file "+fname+" for flat calibration.",1)
             dspe = read_spe.File(str(fname))
@@ -350,9 +344,9 @@ class WithMenu(QtGui.QMainWindow):
             for i in range(1,num_darks):
                 (thisframe,_)=dspe.get_frame(i)
                 frames=np.concatenate((frames,[thisframe]),0)
-            darkForFlat=np.median(frames,axis=0)
-            darkForFlatExists = True
-            log("Mean dark counts for flat: "+str(np.mean(darkForFlat)))
+            mv.darkForFlat=np.median(frames,axis=0)
+            mv.darkForFlatExists = True
+            log("Mean dark counts for flat: "+str(np.mean(mv.darkForFlat)))
             
             #Write out master dark file as fits     
             #Set up header
@@ -372,8 +366,8 @@ class WithMenu(QtGui.QMainWindow):
                 prihdr['INSTRUME'] = footer_metadata.find(name="Camera").attrs['model']
                 prihdr['TRIGGER'] = footer_metadata.find(name='TriggerResponse').text
                 prihdr['COMMENT'] = "SPE file has footer metadata"
-                darkForFlatExp=np.round(float(footer_metadata.find(name='ExposureTime').text)/1000.)
-                log("Exposure time for dark for flat: "+str(darkForFlatExp)+" s")
+                mv.darkForFlatExp=np.round(float(footer_metadata.find(name='ExposureTime').text)/1000.)
+                log("Exposure time for dark for flat: "+str(mv.darkForFlatExp)+" s")
                 prihdr['EXPTIME'] = str(float(footer_metadata.find(name='ExposureTime').text)/1000.)
                 #prihdr['SOFTWARE'] = footer_metadata.find(name='Origin')
                 prihdr['SHUTTER'] = footer_metadata.find(name='Mode').text
@@ -381,12 +375,12 @@ class WithMenu(QtGui.QMainWindow):
                     prihdr['WARNING'] = 'Shutter not closed for dark frame.'
                     log("Shutter not closed for dark frame.",3)
                 else:
-                    darkForFlatDark=True
+                    mv.darkForFlatDark=True
             else:
                 prihdr['WARNING'] = "No XML footer metadata."
                 log("No XML footer metadata.",3)
             #Set up fits object
-            hdu = fits.PrimaryHDU(darkForFlat,header=prihdr)
+            hdu = fits.PrimaryHDU(mv.darkForFlat,header=prihdr)
             darkpath = os.path.dirname(fname)
             fitsfilename = 'master_'+os.path.basename(fname).split('.spe')[0]+'.fits'
             log("Writing master dark as "+fitsfilename)
@@ -398,16 +392,16 @@ class WithMenu(QtGui.QMainWindow):
             log("Opening dark file "+fname+" for flat calibration.",1)
             hdulist = fits.open(fname)
             prihdr = hdulist[0].header
-            darkForFlat=hdulist[0].data
-            darkForFlatExp = np.round(float(prihdr['EXPTIME']))
-            log("Exposure time for dark for flat: "+str(darkForFlatExp)+" s")
-            log("Mean dark counts: "+str(np.mean(darkForFlat)))
+            mv.darkForFlat=hdulist[0].data
+            mv.darkForFlatExp = np.round(float(prihdr['EXPTIME']))
+            log("Exposure time for dark for flat: "+str(mv.darkForFlatExp)+" s")
+            log("Mean dark counts: "+str(np.mean(mv.darkForFlat)))
             if prihdr['SHUTTER'] != 'AlwaysClosed':
                 prihdr['WARNING'] = 'Shutter not closed for dark frame.'
                 log("Shutter not closed for dark frame for flat.",3)
             else:
-                darkForFlatDark=True
-            darkForFlatExists = True
+                mv.darkForFlatDark=True
+            mv.darkForFlatExists = True
             processframe()
             displayFrame(autoscale=True,markstars=False)
             hdulist.close()            
@@ -416,11 +410,10 @@ class WithMenu(QtGui.QMainWindow):
         
     #Load Flat frames
     def openFlat(self):
-        global flat, flatExists, flatReduced
         fname = str(QtGui.QFileDialog.getOpenFileName(self, 'Open SPE flat file', 
-                defaultdir,filter='Data (*.spe *.fits)'))
+                mv.defaultdir,filter='Data (*.spe *.fits)'))
         if fname[-4:]=='.spe':
-            if darkForFlatExists == False:
+            if mv.darkForFlatExists == False:
                 log("Import dark for reducting flats before importing flat SPE file.",3)
             else:
                 log("Opening flat file "+fname,1)
@@ -430,17 +423,17 @@ class WithMenu(QtGui.QMainWindow):
                 #stack as 3D numpy array
                 (frames,_)=fspe.get_frame(0)
                 modes=[]
-                frames = frames - darkForFlat
+                frames = frames - mv.darkForFlat
                 modes.append(stats.mode(frames.flatten())[0][0])
                 frames=np.array([frames/modes[0]])
                 for i in range(1,num_flats):
                     (thisframe,_)=fspe.get_frame(i)
-                    thisframe = thisframe-darkForFlat
+                    thisframe = thisframe-mv.darkForFlat
                     #modes.append(stats.mode(thisframe.flatten())[0][0])
                     modes.append(np.median(thisframe.flatten()))
                     frames=np.concatenate((frames,[thisframe/modes[i]]),0)
-                flat=np.median(frames,axis=0)
-                flatExists=True
+                mv.flat=np.median(frames,axis=0)
+                mv.flatExists=True
                 log("Median flat counts: "+str(np.median(modes)))
                 processframe()
                 displayFrame(autoscale=True,markstars=False)
@@ -466,13 +459,13 @@ class WithMenu(QtGui.QMainWindow):
                     prihdr['EXPTIME'] = str(float(footer_metadata.find(name='ExposureTime').text)/1000.)
                     flatexptime = np.round(float(footer_metadata.find(name='ExposureTime').text)/1000.)
                     #check that dark exp time matches flat
-                    if flatexptime == darkForFlatExp:
-                        flatReduced = True
+                    if flatexptime == mv.darkForFlatExp:
+                        mv.flatReduced = True
                     else:
                         log("Exp times for dark and flat do not match!",3)
-                        if darkForFlatExp == 0:
+                        if mv.darkForFlatExp == 0:
                             log("Bias being used for flat subtraction.",1)
-                            flatReduced=True
+                            mv.flatReduced=True
                     #prihdr['SOFTWARE'] = footer_metadata.find(name='Origin')
                     prihdr['SHUTTER'] = footer_metadata.find(name='Mode').text
                     prihdr['REDUCED'] = dt.datetime.now().isoformat()
@@ -481,8 +474,8 @@ class WithMenu(QtGui.QMainWindow):
                     log("No XML footer metadata.",3)
                             #Set up fits object
                 #Only write flat if properly dark subtracted:
-                if darkForFlatDark and flatReduced:
-                    hdu = fits.PrimaryHDU(flat,header=prihdr)
+                if mv.darkForFlatDark and mv.flatReduced:
+                    hdu = fits.PrimaryHDU(mv.flat,header=prihdr)
                     flatpath = os.path.dirname(fname)
                     fitsfilename = 'master_'+os.path.basename(fname).split('.spe')[0]+'.fits'
                     log("Writing master flat as "+fitsfilename)
@@ -494,11 +487,11 @@ class WithMenu(QtGui.QMainWindow):
             log("Opening flat file "+fname,1)
             hdulist = fits.open(fname)
             prihdr = hdulist[0].header
-            flat=hdulist[0].data
-            flatExists = True
+            mv.flat=hdulist[0].data
+            mv.flatExists = True
             flatmode= float(prihdr["mode"])
             if flatmode == 1: #Properly normalized?
-                flatReduced=True
+                mv.flatReduced=True
             else:
                 log("Mode of master flat is "+str(flatmode)+". Not properly normalized?",3)
             processframe()
@@ -510,14 +503,13 @@ class WithMenu(QtGui.QMainWindow):
     
     #Restore previously "bad" points
     def restorePts(self):
-        global bad
-        log("Deselecting "+str(len(bad))+" points.")
-        bad=[]
-        updatelcs(i=framenum)
+        log("Deselecting "+str(len(mv.bad))+" points.")
+        mv.bad=[]
+        updatelcs(i=mv.framenum)
     
     #Set up aperture size menu options
     def setupApsizeMenu(self): 
-        for size in apsizes:
+        for size in mv.apsizes:
             self.changeApertureMenu.addAction(str(size)+' pixels',lambda s=size: setApSize(s))
     
     #Set up comp star selection menu options
@@ -531,18 +523,17 @@ class WithMenu(QtGui.QMainWindow):
     #Run Photometry
     def run(self):
         #Do aperture photometry on selected stars
-        global numstars, selectingstars
-        if stage == 1:
-            if len(stars) == 0:
+        if mv.stage == 1:
+            if len(mv.stars) == 0:
                 log("No stars selected.  Select stars before running.",3)
             else:
-                numstars = len(stars)
+                mv.numstars = len(mv.stars)
                 #Write original coordinates and seeing to phot_coords.orig
-                f = open(rundir+'/phot_coords.orig', 'w')
-                for j,star in enumerate(stars):
-                    f.write('{:.2f} {:.2f} {:.2f}\n'.format(star[0],star[1],seeing[j]))
+                f = open(mv.rundir+'/phot_coords.orig', 'w')
+                for j,star in enumerate(mv.stars):
+                    f.write('{:.2f} {:.2f} {:.2f}\n'.format(star[0],star[1],mv.seeing[j]))
                 f.close()
-                selectingstars=False
+                mv.selectingstars=False
                 stage2()
             
         
@@ -667,13 +658,12 @@ w6.addItem(l1)
 d6.addWidget(w6)
 # Make points change color when clicked
 def clicked(plot, points):
-    global bad
     for p in points:
-        if p.pos()[0]/exptime in bad:
-            bad.remove(p.pos()[0]/exptime)
+        if p.pos()[0]/mv.exptime in mv.bad:
+            mv.bad.remove(p.pos()[0]/mv.exptime)
         else:
-            bad.append(p.pos()[0]/exptime)
-    updatelcs(i=framenum)
+            mv.bad.append(p.pos()[0]/mv.exptime)
+    updatelcs(i=mv.framenum)
     
 s1.sigClicked.connect(clicked)
 #s2.sigClicked.connect(clicked)
@@ -721,8 +711,7 @@ w5.ui.roiBtn.hide()
 #w5.ui.normBtn.hide() #Causing trouble on windows
 #Define function for selecting stars. (must be defined before linking the click action)
 def click(event):#Linked to image click event
-    global stars, seeing
-    if event.button() == 1 and selectingstars:
+    if event.button() == 1 and mv.selectingstars:
         event.accept()
         pos = event.pos()
         #x and y are swapped in the GUI!
@@ -733,16 +722,16 @@ def click(event):#Linked to image click event
         dx,dy,newseeing = improvecoords(x,y)
         #round originals so original position *within* pixel doesn't affect answer
         newcoords=[np.floor(x)+dx,np.floor(y)+dy]
-        stars.append(newcoords)
-        seeing.append(newseeing)
+        mv.stars.append(newcoords)
+        mv.seeing.append(newseeing)
         #make menuoption for comp star selection
-        if len(stars) > 1: win.addCompStarOption(len(stars)-1)
+        if len(mv.stars) > 1: win.addCompStarOption(len(mv.stars)-1)
         #Mark stars in image display
-        targs.setData([p[0] for p in stars],[p[1] for p in stars])
-        targs.setPen(pencolors[0:len(stars)])
+        targs.setData([p[0] for p in mv.stars],[p[1] for p in mv.stars])
+        targs.setPen(pencolors[0:len(mv.stars)])
         #Set up plot for raw counts and seeing:
-        rawcounts.append(pg.ScatterPlotItem(pen=pencolors[len(stars)-1],symbol='o',size=1))
-        seeingplots.append(pg.PlotCurveItem(pen=seeingcolors[len(stars)-1]))
+        rawcounts.append(pg.ScatterPlotItem(pen=pencolors[len(mv.stars)-1],symbol='o',size=1))
+        seeingplots.append(pg.PlotCurveItem(pen=seeingcolors[len(mv.stars)-1]))
         log('Star selected at ({:.2f}, {:.2f})'.format(newcoords[0],newcoords[1]),level=1)
         
     elif event.button() == 2: 
@@ -804,92 +793,33 @@ log("Open SPE file to begin analysis.",1)
 # Since the SPE file is loaded by the menu action, this will be one big
 # function that is called on the new image.
 
-#First define all the variables everything will need access to:
-#These will be called into action as global variables.
-
-#SPE Filename
-spefile = ''
-#SPE Data
-spe=[]
-#SPE file directory
-rundir=''
-#Does SPE have a footer?
-hasFooter=False
-#Number of frames in currently read spe file
-numframes=0
-#Exposure time for science frames
-exptime=1. #If it can't be figured out, plots are in terms of frame #
-#Dark data
-dark = []
-darkExists=False
-darkExp=0 #exp time should match spe exptime
-darkDark=False #shutter closed?
-darkForFlat = []
-darkForFlatExists=False
-darkForFlatExp=0
-darkForFlatDark=False
-#Flat data
-flat = []
-flatExists=False
-flatReduced=False #proper dark subtracted?
-#Flag whether full reductions are being done (*correct* darks and flat)
-
-#Number of last *reduced* (photometry measures) frame
-framenum=-1 #none yet
-#Flag to indicate whether we are currently selecting stars in the frame:
-selectingstars = False
-#Number of stars to do photometry on (target first)
-numstars = 0 #0 means we haven't selected stars yet.
-#Star coords
-stars = [] #list of list of list of coords
-#Image data:
-img=[] #only hold current image to save tiem
-#And another version to look nice
-displayimg=[] #only hold current image to save tiem
-#Keep track of "Bad" points
-bad=[]
-#Elapsed timestamps
-rawtimes=[] #start of timestamp
-#Search radius (box for now), improve later
-pixdist=10 #(super)pixels
-#List of median background counts:
-backmed=[]
-#List of background variances
-backvar=[]
-#Seeing for each star,frame:
-seeing=[]
-#Binning
-binning=4
 
 def stage1(fname):
     #Load SPE File
-
-    #Access needed global vars
-    global spefile,spe,binning,exptime,dark,flat
     #Announce Stage 1    
     stagechange(1)
     #Record SPE filename this once
-    spefile = fname
+    mv.spefile = fname
     #Read in SPE data
-    spe = read_spe.File(spefile)
-    binning = 1024/spe.get_frame(0)[0].shape[0]
-    log(str(spe.get_num_frames()) + ' frames read in.')
-    exptime=getexptime(spe)
-    log('Inferred exposure time: '+str(exptime)+' s')
-    if hasattr(spe, 'footer_metadata'): 
+    mv.spe = read_spe.File(mv.spefile)
+    mv.binning = 1024/mv.spe.get_frame(0)[0].shape[0]
+    log(str(mv.spe.get_num_frames()) + ' frames read in.')
+    mv.exptime=getexptime(mv.spe)
+    log('Inferred exposure time: '+str(mv.exptime)+' s')
+    if hasattr(mv.spe, 'footer_metadata'): 
         #log('SPE file has footer.')
-        exptime=np.round(float(BeautifulSoup(spe.footer_metadata, "xml").find(name='ExposureTime').text)/1000.)
-        #log('Exposute time from footer: '+str(exptime)+' s')
+        mv.exptime=np.round(float(BeautifulSoup(mv.spe.footer_metadata, "xml").find(name='ExposureTime').text)/1000.)
+        #log('Exposute time from footer: '+str(mv.exptime)+' s')
     #now display the first frame
     processframe()
     displayFrame(autoscale=True,markstars=False)
     #Load calibration frames and set up
     log("Please load dark, flat, and dark for flat files",1)
-    dark = np.zeros(img[0].shape)
-    flat = np.ones(img[0].shape)
+    mv.dark = np.zeros(mv.img[0].shape)
+    mv.flat = np.ones(mv.img[0].shape)
     #Select stars:
     selectstars()
-    #spe.close() #In real version we'll close spe
+    #mv.spe.close() #In real version we'll close spe
     win.setupApsizeMenu()
         
 
@@ -900,44 +830,43 @@ def getexptime(thisspe):
     numtoread = min([thisspe.get_num_frames(),11])
     tstamps = np.zeros(numtoread)
     for f in range(numtoread): 
-        tstamps[f] = spe.get_frame(f)[1]['time_stamp_exposure_started']
+        tstamps[f] = mv.spe.get_frame(f)[1]['time_stamp_exposure_started']
     timediff = tstamps[1:numtoread]-tstamps[:numtoread-1]
     return np.round(np.median(timediff/1e6))
 
 
 #Define all the stuff that needs to be done to each incoming frame
 def processframe(i=0):
-    global img,displayimg,rawtimes,backmed,backvar,framenum
-    (thisframe,thistime) = spe.get_frame(i)
+    (thisframe,thistime) = mv.spe.get_frame(i)
     #calibrate (doesn't do anything if calibration frames are not available):
-    if darkExists: thisframe=(thisframe-dark)
-    if flatExists: thisframe=thisframe/flat
+    if mv.darkExists: thisframe=(thisframe-mv.dark)
+    if mv.flatExists: thisframe=thisframe/mv.flat
     #read in frame
-    img=np.transpose(thisframe)
+    mv.img=np.transpose(thisframe)
     backgroundmed,backgroundvar=charbackground()
-    #append stuff to global variables
+
     #Replace if this frame already exists, otherwise append
-    if i <= framenum: #replace
-        #log('Re-processing frame '+str(i)+' of '+str(framenum))
-        rawtimes[i]=thistime['time_stamp_exposure_started']
-        backmed[i]=backgroundmed
-        backvar[i]=backgroundvar
+    if i <= mv.framenum: #replace
+        #log('Re-processing frame '+str(i)+' of '+str(mv.framenum))
+        mv.rawtimes[i]=thistime['time_stamp_exposure_started']
+        mv.backmed[i]=backgroundmed
+        mv.backvar[i]=backgroundvar
     else: #append
-        #log('Processing frame '+str(i)+' of '+str(framenum))
-        rawtimes.append(thistime['time_stamp_exposure_started'])
-        backmed.append(backgroundmed)
-        backvar.append(backgroundvar)
+        #log('Processing frame '+str(i)+' of '+str(mv.framenum))
+        mv.rawtimes.append(thistime['time_stamp_exposure_started'])
+        mv.backmed.append(backgroundmed)
+        mv.backvar.append(backgroundvar)
     
     #make display image
-    newdisplayimg=np.copy(img)
+    newdisplayimg=np.copy(mv.img)
     newdisplayimg[0,0]=0
     imgvals = newdisplayimg.flatten()
     img99percentile = np.percentile(imgvals,99)
     newdisplayimg[newdisplayimg > img99percentile] = img99percentile
-    #log("Framenum: "+str(framenum),2)
+    #log("Framenum: "+str(mv.framenum),2)
     #Replace if this frame already exists, otherwise append
-    displayimg=newdisplayimg
-    framenum=i
+    mv.displayimg=newdisplayimg
+    mv.framenum=i
     
 #Function to characterize the background to find stellar centroids accurately
 #This should be done for each frame as it's read in
@@ -946,8 +875,8 @@ def charbackground():
 
     for frame currenly held in img  
     """
-    backgroundmed = biweight_location(img)
-    backgroundvar = biweight_midvariance(img)
+    backgroundmed = biweight_location(mv.img)
+    backgroundvar = biweight_midvariance(mv.img)
     return backgroundmed, backgroundvar        
  
 #show the image to the widget
@@ -961,18 +890,18 @@ def displayFrame(autoscale=False,markstars=True):
     #Make sure i is in range
     if autoscale:
         #lowlevel=np.min(thisimg[thisimg > 0])
-        lowlevel=np.min(displayimg)
-        if np.sum(displayimg > 0) > 100:
-            lowlevel=np.percentile(displayimg[displayimg > 0],3)
-        highlevel=np.max(displayimg)-1
-        w5.setImage(np.array(displayimg),autoRange=True,levels=[lowlevel,highlevel],)
+        lowlevel=np.min(mv.displayimg)
+        if np.sum(mv.displayimg > 0) > 100:
+            lowlevel=np.percentile(mv.displayimg[mv.displayimg > 0],3)
+        highlevel=np.max(mv.displayimg)-1
+        w5.setImage(np.array(mv.displayimg),autoRange=True,levels=[lowlevel,highlevel],)
     else:
-        w5.setImage(np.array(displayimg),autoRange=False,autoLevels=False)
+        w5.setImage(np.array(mv.displayimg),autoRange=False,autoLevels=False)
     #Draw position circles:
-    if markstars and len(stars) > 0:
-        targs.setData([p[0] for p in stars[framenum]],[p[1] for p in stars[framenum]])
-        targs.setSize(2.*apsizes[apsizeindex])
-        targs.setPen(pencolors[0:numstars])
+    if markstars and len(mv.stars) > 0:
+        targs.setData([p[0] for p in mv.stars[mv.framenum]],[p[1] for p in mv.stars[mv.framenum]])
+        targs.setSize(2.*mv.apsizes[mv.apsizeindex])
+        targs.setPen(pencolors[0:mv.numstars])
         
         
 def selectstars():
@@ -981,14 +910,13 @@ def selectstars():
     Click to select any number in the first image.
     Click to select numstars in later images to get following back on track.
     '''
-    global selectingstars
-    selectingstars = True
+    mv.selectingstars = True
     
 def gaussian(x, A, sigma):
     #Define a gaussian for finding FWHM
     return A*np.exp(-(x)**2/(2.*sigma**2))
 
-def improvecoords(x,y,i=framenum,pixdist=pixdist,fwhm=4.0,sigma=5.):
+def improvecoords(x,y,i=mv.framenum,pixdist=10,fwhm=4.0,sigma=5.):
     """Improve stellar centroid position from guess value. (one at a time)
 
     #return the adjustment than needs to be made in x and y directions
@@ -1010,13 +938,13 @@ def improvecoords(x,y,i=framenum,pixdist=pixdist,fwhm=4.0,sigma=5.):
     if y0 < 0: #same in the y direction
         y0 = 0
         delta[1] += pixdist-y
-    if x+pixdist > img.shape[0]:
-        xdist = img.shape[0]-x+pixdist
-    if y+pixdist > img.shape[1]:
-        ydist = img.shape[1]-y+pixdist
-    subdata=img[x0:x0+xdist,y0:y0+ydist]
+    if x+pixdist > mv.img.shape[0]:
+        xdist = mv.img.shape[0]-x+pixdist
+    if y+pixdist > mv.img.shape[1]:
+        ydist = mv.img.shape[1]-y+pixdist
+    subdata=mv.img[x0:x0+xdist,y0:y0+ydist]
     #print subdata.shape
-    sources = daofind(subdata - backmed[i], sigma*backvar[i], fwhm,
+    sources = daofind(subdata - mv.backmed[i], sigma*mv.backvar[i], fwhm,
                       sharplo=0.1, sharphi=1.5, roundlo=-2.0, roundhi=2.0)
     #From what I can tell, daofind returns x and y swapped, so fix it
     returnedx = sources['ycentroid']
@@ -1029,7 +957,7 @@ def improvecoords(x,y,i=framenum,pixdist=pixdist,fwhm=4.0,sigma=5.):
         delta[0]+=returnedx[strongsignal]-pixdist
         delta[1]+=returnedy[strongsignal]-pixdist
         #Fit with a gaussian
-        seeingdata = subdata.flatten() - backmed[i]
+        seeingdata = subdata.flatten() - mv.backmed[i]
         dist = []
         for j in np.arange(subdata.shape[1])+0.5:
             for k in np.arange(subdata.shape[0])+0.5:
@@ -1093,110 +1021,102 @@ def improvecoords(x,y,i=framenum,pixdist=pixdist,fwhm=4.0,sigma=5.):
 #### STAGE 2 ####
 
 #Aperture details (provide a way to change these!)
-apsizes=np.arange(1,11)
-apsizeindex=3
 r_in = 16.  #inner sky annulus radius #change in terms of binning eventually
 r_out = 24. #outer sky annulus radius #change in terms of binning eventually
 def setApSize(size):
-    global apsizeindex
     log("Aperture size set to "+str(size)+" pixels.",1)
     #log("(Updates on next frame.)")
-    if size in apsizes:
-        apsizeindex=np.where(apsizes == size)[0][0]
+    if size in mv.apsizes:
+        mv.apsizeindex=np.where(mv.apsizes == size)[0][0]
         targs.setSize(2*size)# Currently doesn't update until next click/frame
-        if stage > 1: 
-            updatelcs(i=framenum)
+        if mv.stage > 1: 
+            updatelcs(i=mv.framenum)
 
-compstar = 1 #which star to divide by
+
 def setCompStar(s):
-    global compstar
-    compstar = s
+    mv.compstar = s
     log("Now dividing by comparsion star #"+str(s),1)
-    updatelcs(framenum)
+    updatelcs(mv.framenum)
 
 
-#Phot results: variables to hold light curves and uncertainties
-photresults=np.array([])
+
 
 
 #Run the stage 2 loop
 def stage2():
-    global stars,seeing, spe, stage, hasFooter
     stagechange(2)
     #Add plot items for raw counts panel to plot
     for splot in rawcounts: w7.addItem(splot)
     for splot in seeingplots: w9.addItem(splot)
     #Make stars array an array of arrays of star coord arrays (yikes)
     # i.e, it needs to get pushed a level deeper
-    stars=[stars]
+    mv.stars=[mv.stars]
     #same with seeing
-    seeing=np.array([seeing])
+    mv.seeing=np.array([mv.seeing])
     #Run photometry on the first frame
     dophot(0)
     updatelcs(i=0)
     updatehack()
     #Start timer that looks for new data
-    timer2.start(min(exptime*1000.,5000.))# shorter of exptime and 5 sec
+    timer2.start(min(mv.exptime*1000.,5000.))# shorter of exptime and 5 sec
     timer3.start(1.*60*1000)#update every 1 minutes
     #This currently freezes up the UI.  Need to thread, but not enough time
     #to implement this currently.  Use a hack for now
     '''
     #Run the loop:
-    fsize_spe_old = 0
-    while not hasFooter:
+    mv.fsize_spe_old = 0
+    while not mv.hasFooter:
         #Update only if there's new data
-        fsize_spe_new = os.path.getsize(spefile)
-        if fsize_spe_new > fsize_spe_old:
-            spe = read_spe.File(spefile)
-            numframes = spe.get_num_frames()
-            log('Processing frames '+str(framenum)+'-'+str(numframes),1)
-            while framenum < numframes:
+        fsize_spe_new = os.path.getsize(mv.spefile)
+        if fsize_spe_new > mv.fsize_spe_old:
+            mv.spe = read_spe.File(mv.spefile)
+            mv.numframes = spe.get_num_frames()
+            log('Processing frames '+str(mv.framenum)+'-'+str(mv.numframes),1)
+            while mv.framenum < mv.numframes:
                 nextframe()
-            if hasattr(spe, 'footer_metadata'): 
-                hasFooter = True
+            if hasattr(mv.spe, 'footer_metadata'): 
+                mv.hasFooter = True
                 log('SPE footer detected. Data acquisition complete.',2)
                 stagechange(3)
-            spe.close()
-        fsize_spe_old = fsize_spe_new
+            mv.spe.close()
+        mv.fsize_spe_old = fsize_spe_new
     '''
 
-fsize_spe_old = 0#Keep track if new spe file is larger that old one
+
 def updatehack():
-    global spe, hasFooter, numframes,fsize_spe_old
     #Only look for new data if not currently processing new data
     if not timer.isActive():
         #Update only if there's new data
-        fsize_spe_new = os.path.getsize(spefile)
+        fsize_spe_new = os.path.getsize(mv.spefile)
         
-        if fsize_spe_new > fsize_spe_old and stage ==2:
-            spe = read_spe.File(spefile)
-            numframes = spe.get_num_frames()
-            if framenum+1==numframes-1:log('Processing frame '+str(framenum+1))
-            else: log('Processing frames '+str(framenum+1)+'-'+str(numframes-1),1)        
+        if fsize_spe_new > mv.fsize_spe_old and mv.stage ==2:
+            mv.spe = read_spe.File(mv.spefile)
+            mv.numframes = mv.spe.get_num_frames()
+            if mv.framenum+1==mv.numframes-1:log('Processing frame '+str(mv.framenum+1))
+            else: log('Processing frames '+str(mv.framenum+1)+'-'+str(mv.numframes-1),1)        
             timer.start(100)
             #Update plots
-            updatelcs(i=framenum)
-            if hasattr(spe, 'footer_metadata'): 
-                hasFooter = True
+            updatelcs(i=mv.framenum)
+            if hasattr(mv.spe, 'footer_metadata'): 
+                mv.hasFooter = True
                 timer3.stop()
-        fsize_spe_old = fsize_spe_new
+        mv.fsize_spe_old = fsize_spe_new
 
 def nextframehack():
     #call nextframe until you're caught up
-    global framenum,spe
     nextframe()
-    updatelcs(i=framenum)
-    if framenum >= numframes-1:
+    updatelcs(i=mv.framenum)
+    if mv.framenum >= mv.numframes-1:
         timer.stop()
-        updateft(i=framenum)
-        if hasFooter:
+        updateft(i=mv.framenum)
+        if mv.hasFooter:
             log('SPE footer detected. Data acquisition complete.',2)
             stagechange(3)
             log("Image processing complete",2)
             writetimestamps()
             displayFrame(autoscale=True)
             
-        spe.close()
+        mv.spe.close()
 
 #This timer catches up on photometry
 timer = pg.QtCore.QTimer()#set up timer to avoid while loop
@@ -1210,24 +1130,23 @@ timer2.timeout.connect(updatehack)
 
 #For demo purposes, read in the next frame of the spe file each time this is called
 def nextframe():
-    global stars, seeing
-    #if stage == 2:
-    oldcoords = stars[framenum]
-    processframe(i=framenum+1) #Frame num increases here.
+    #if mv.stage == 2:
+    oldcoords = mv.stars[mv.framenum]
+    processframe(i=mv.framenum+1) #Frame num increases here.
     newcoords=[]
     newseeing=[]
     for coord in oldcoords:
-        dx,dy,thisseeing = improvecoords(coord[0],coord[1],i=framenum)
+        dx,dy,thisseeing = improvecoords(coord[0],coord[1],i=mv.framenum)
         newcoords.append([np.floor(coord[0])+.5+dx,np.floor(coord[1])+.5+dy]) 
         newseeing.append(thisseeing)
-    stars.append(newcoords)
-    seeing = np.append(seeing,[newseeing],axis=0)
+    mv.stars.append(newcoords)
+    mv.seeing = np.append(mv.seeing,[newseeing],axis=0)
     #Show the frame
     displayFrame(autoscale=True,markstars=True)
     #Perform photometry
-    dophot(i=framenum)
+    dophot(i=mv.framenum)
     #Update light curves
-    #updatelcs(i=framenum) #only after all the new photometry is done.
+    #updatelcs(i=mv.framenum) #only after all the new photometry is done.
     
 
 
@@ -1238,7 +1157,6 @@ def dophot(i):
     
     Stars have been selected.  Do aperture photometry on given frame
     '''
-    global photresults
     #print "dophot(i) called with i="+str(i)
     #Do the aperture photometry
 
@@ -1252,32 +1170,30 @@ def dophot(i):
 
     #Note that the photometry package seems to reference x and y coords
     #as the tranpose of what we've been using.  Switch the order here:
-    coords = [star[::-1] for star in stars[i]]
-    thisphotometry = np.zeros((len(coords),len(apsizes)))
-    for n in range(numstars):
+    coords = [star[::-1] for star in mv.stars[i]]
+    thisphotometry = np.zeros((len(coords),len(mv.apsizes)))
+    for n in range(mv.numstars):
         #Loop through the stars in the image
         #annulus_aperture = CircularAnnulus(coords[n], r_in=r_in, r_out=r_out)
-        #print aperture_photometry(img[i],annulus_aperture).keys()
-        #background_mean = aperture_photometry(img[i],annulus_aperture)['aperture_sum'][0]/annulus_aperture.area() 
+        #print aperture_photometry(mv.img[i],annulus_aperture).keys()
+        #background_mean = aperture_photometry(mv.img[i],annulus_aperture)['aperture_sum'][0]/annulus_aperture.area() 
         #NOTE on the above line: This should really be a median!
         #Issue 161 on photutils https://github.com/astropy/photutils/issues/161 is open as of 09/28/15
         gain = 12.63 #? From PI Certificate of Performance for "traditional 5MHz gain."  Confirm this value!
         #loop through aperture sizes
-        for j,size in enumerate(apsizes):
+        for j,size in enumerate(mv.apsizes):
             aperture = CircularAperture(np.array(coords[n]), r=size) 
             #phot = aperture_photometry(x-background_mean,aperture,error=backgroundvar,gain=gain)
             #Why am I getting negative numbers?
-            #phot = aperture_photometry(img[i]-np.median(img),aperture)
-            phot = aperture_photometry(img-backmed[i],aperture)
+            #phot = aperture_photometry(mv.img[i]-np.median(mv.img),aperture)
+            phot = aperture_photometry(mv.img-mv.backmed[i],aperture)
             thisphotometry[n,j]=phot['aperture_sum'][0]
     #print "photometry ",thisphotometry
     if i == 0:
-        photresults = np.array([thisphotometry])
+        mv.photresults = np.array([thisphotometry])
     else:
-        #print "photresults dimensions are "+str(photresults.shape)
-        #print "trying to append shape "+str(thisphotometry.shape)
-        photresults = np.append(photresults,[thisphotometry],axis=0)
-    #print "photresults dimensions are "+str(photresults.shape)
+        mv.photresults = np.append(mv.photresults,[thisphotometry],axis=0)
+    #print "photresults dimensions are "+str(mv.photresults.shape)
     #yay.  This deserves to all be checked very carefully, especially since the gain only affects uncertainty and not overall counts.
 
 
@@ -1357,44 +1273,44 @@ kernel=smoothingkernel()
 def updatelcs(i):
     #Identify which points to include/exclude, up to frame i
     goodmask=np.ones(i+1, np.bool)
-    goodmask[bad] = False
+    goodmask[mv.bad] = False
     badmask = np.zeros(i+1, np.bool)
-    badmask[bad] = True
-    targdivided = photresults[:i+1,0,apsizeindex]/photresults[:i+1,compstar,apsizeindex]
+    badmask[mv.bad] = True
+    targdivided = mv.photresults[:i+1,0,mv.apsizeindex]/mv.photresults[:i+1,mv.compstar,mv.apsizeindex]
     times = np.arange(i+1)#Multiply by exptime for timestamps
     goodfluxnorm=targdivided[goodmask[:i+1]]/np.abs(np.mean(targdivided[goodmask[:i+1]]))
-    s1.setData(exptime*times[goodmask[:i+1]],goodfluxnorm)
+    s1.setData(mv.exptime*times[goodmask[:i+1]],goodfluxnorm)
     #s2.setData(times[badmask[:i]],targdivided[badmask[:i]])
-    l1.setData(exptime*times[goodmask[:i+1]],goodfluxnorm)
+    l1.setData(mv.exptime*times[goodmask[:i+1]],goodfluxnorm)
     #sl1.setData(times[goodmask[:i]],fluxsmoothed[goodmask[:i]])
     #Raw Counts:
-    for j,splot in enumerate(rawcounts): splot.setData(exptime*times,photresults[:,j,apsizeindex])
+    for j,splot in enumerate(rawcounts): splot.setData(mv.exptime*times,mv.photresults[:,j,mv.apsizeindex])
     #Seeing:
-    for j,splot in enumerate(seeingplots[::-1]): splot.setData(exptime*times,seeing[:,j])
+    for j,splot in enumerate(seeingplots[::-1]): splot.setData(mv.exptime*times,mv.seeing[:,j])
     #Sky brightness
-    sky.setData(exptime*times,backmed)
+    sky.setData(mv.exptime*times,mv.backmed)
 
 def updateftfromtimer():
-    updateft(i=framenum)
+    updateft(i=mv.framenum)
 
-def updateft(i=framenum):
+def updateft(i=mv.framenum):
         oversample=10. #Oversampling factor
         goodmask=np.ones(i+1, np.bool)
-        goodmask[bad] = False
-        targdivided = photresults[:i+1,0,apsizeindex]/photresults[:i+1,compstar,apsizeindex]
+        goodmask[mv.bad] = False
+        targdivided = mv.photresults[:i+1,0,mv.apsizeindex]/mv.photresults[:i+1,mv.compstar,mv.apsizeindex]
         goodfluxnorm=targdivided[goodmask[:i+1]]/np.abs(np.mean(targdivided[goodmask[:i+1]]))
         times = np.arange(i+1)#Multiply by exptime for timestamps
         #Fourier Transform   and smoothed lc  
         if goodmask.sum() > 2:
             #This all requires at least two points
             #Only update once per file read-in
-            interped = interp1d(exptime*times[goodmask[:i+1]],goodfluxnorm-1.)
-            xnew = np.arange(exptime*min(times[goodmask[:i]]),exptime*max(times[goodmask[:i+1]]),exptime)
+            interped = interp1d(mv.exptime*times[goodmask[:i+1]],goodfluxnorm-1.)
+            xnew = np.arange(mv.exptime*min(times[goodmask[:i]]),mv.exptime*max(times[goodmask[:i+1]]),mv.exptime)
             ynew = interped(xnew)
             #calculate FT
             amp = 2.*np.abs(fft(ynew,n=len(ynew)*oversample))#FFT
             amp /= float(len(ynew))
-            freq = fftfreq(len(amp),d=exptime)
+            freq = fftfreq(len(amp),d=mv.exptime)
             pos = freq>=0 # keep positive part
             
             ft.setData(1e6*freq[pos],1e3*amp[pos])
@@ -1431,10 +1347,10 @@ class Stage2Thread(QtCore.QThread):
 
 #Write timestamps
 def writetimestamps():
-    fpath_csv = os.path.splitext(spefile)[0]+'_timestamps.csv'
+    fpath_csv = os.path.splitext(mv.spefile)[0]+'_timestamps.csv'
     log("Writing absolute timestamps to file "+fpath_csv,2)
-    if hasattr(spe, 'footer_metadata'):
-        footer_metadata = BeautifulSoup(spe.footer_metadata, "xml")
+    if hasattr(mv.spe, 'footer_metadata'):
+        footer_metadata = BeautifulSoup(mv.spe.footer_metadata, "xml")
         trigger_response = footer_metadata.find(name='TriggerResponse').text
         ts_begin = footer_metadata.find(name='TimeStamp', event='ExposureStarted').attrs['absoluteTime']
         dt_begin = dateutil.parser.parse(ts_begin)
@@ -1448,8 +1364,8 @@ def writetimestamps():
         dt_begin = dt.datetime.utcfromtimestamp(os.path.getctime(fpath_spe))
         ticks_per_second = 1E6
     idx_metadata_map = {}
-    for idx in xrange(spe.get_num_frames()):
-        (frame, metadata) = spe.get_frame(idx)
+    for idx in xrange(mv.spe.get_num_frames()):
+        (frame, metadata) = mv.spe.get_frame(idx)
         idx_metadata_map[idx] = metadata
     df_metadata = pd.DataFrame.from_dict(idx_metadata_map, orient='index')
     df_metadata = df_metadata.set_index(keys='frame_tracking_number')
@@ -1474,5 +1390,5 @@ def writetimestamps():
 if __name__ == '__main__':
     if (sys.flags.interactive != 1) or not hasattr(QtCore, 'PYQT_VERSION'):
         if len(sys.argv) > 1:
-            defaultdir = sys.argv[1]
+            mv.defaultdir = sys.argv[1]
         QtGui.QApplication.instance().exec_()
