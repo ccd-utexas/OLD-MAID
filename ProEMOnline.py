@@ -38,21 +38,8 @@ import matplotlib.pyplot as plt
 # Local modules.
 import read_spe
 import mainvars as mv
+from ProcessLog import ProcessLog
 
-
-#Return a string of the current time
-def timestring():
-    date = dt.datetime.now()
-    return date.strftime('%Y%m%d_%Hh%Mm%Ss')
-
-
-#Function to save a screenshot
-def saveScreenshot():
-    ssfilename=os.path.splitext(mv.spefile)[0]+'_'+timestring()+'.png'
-    log("Writing screenshot to file "+ssfilename,2)
-    p=QtGui.QPixmap.grabWidget(area)
-    writeout = p.save(ssfilename, 'png')
-    if not writeout: log("Saving screenshot failed!",3)
 
 
 
@@ -69,10 +56,25 @@ def saveScreenshot():
 # -> revert back to Stage 0.
 def stagechange(num):
     if num in range(4):
-        log("Program stage = "+str(num),1)
+        processLog.log("Program stage = "+str(num),1)
         mv.stage=num
-    else: log("Attempt to change stage to invalid value ("+str(num)+")",3)
+    else: processLog.log("Attempt to change stage to invalid value ("+str(num)+")",3)
 
+
+#Return a string of the current time
+#Commonly needed for filenames
+def timestring():
+    date = dt.datetime.now()
+    return date.strftime('%Y%m%d_%Hh%Mm%Ss')
+
+
+#Function to save a screenshot
+def saveScreenshot():
+    ssfilename=os.path.splitext(mv.spefile)[0]+'_'+timestring()+'.png'
+    processLog.log("Writing screenshot to file "+ssfilename,2)
+    p=QtGui.QPixmap.grabWidget(area)
+    writeout = p.save(ssfilename, 'png')
+    if not writeout: processLog.log("Saving screenshot failed!",3)
 
 
 #### STAGE 0 ####
@@ -221,7 +223,7 @@ class WithMenu(QtGui.QMainWindow):
         fname = str(QtGui.QFileDialog.getOpenFileName(self, 'Open SPE file', 
                 mv.defaultdir,filter='Data (*.spe)'))
         if fname[-4:]=='.spe':
-            log("Opening file "+fname,1)
+            processLog.log("Opening file "+fname,1)
             #Set the default directory to a couple levels up from this file
             mv.rundir = os.path.dirname(fname)
             mv.defaultdir = os.path.dirname(mv.rundir)
@@ -230,7 +232,7 @@ class WithMenu(QtGui.QMainWindow):
             
             #This needs to trigger a major chain of events
             stage1(fname)
-        else: log("Invalid file type (must be SPE).",3)
+        else: processLog.log("Invalid file type (must be SPE).",3)
         
     #Update the FT at user's command
     def updateFTfunct(self):
@@ -239,16 +241,16 @@ class WithMenu(QtGui.QMainWindow):
         
     def toAutoguider(self):
         if mv.spefile != '':
-            log("Opening separate program to send incoming data to Guide82.",2)
+            processLog.log("Opening separate program to send incoming data to Guide82.",2)
             subprocess.Popen(["python",os.path.join(os.path.dirname(os.path.abspath(__file__)),'toAutoguider.py'),mv.spefile])
         else:
-            log("Open SPE file first before trying to send data to Guide82.",3)
+            processLog.log("Open SPE file first before trying to send data to Guide82.",3)
     #Load Dark frames
     def openDark(self):
         fname = str(QtGui.QFileDialog.getOpenFileName(self, 'Open dark file', 
                 mv.defaultdir,filter='Data (*.spe *.fits)'))
         if fname[-4:]=='.spe':
-            log("Opening dark file "+fname,1)
+            processLog.log("Opening dark file "+fname,1)
             dspe = read_spe.File(fname)
             num_darks=dspe.get_num_frames()
             #get all frames in SPE file
@@ -261,7 +263,7 @@ class WithMenu(QtGui.QMainWindow):
             mv.dark=np.median(frames,axis=0)
             mv.darkExists = True
             
-            log("Mean dark counts: "+str(np.mean(mv.dark)))
+            processLog.log("Mean dark counts: "+str(np.mean(mv.dark)))
             processframe()
             displayFrame(autoscale=True,markstars=False)
             
@@ -285,48 +287,48 @@ class WithMenu(QtGui.QMainWindow):
                 prihdr['COMMENT'] = "SPE file has footer metadata"
                 mv.darkExp=np.round(float(footer_metadata.find(name='ExposureTime').text)/1000.)
                 if mv.darkExp != mv.exptime:
-                    log("Exp times for dark and science frames do not match!",3)
-                log("Exposure time for dark: "+str(mv.darkExp)+" s")
+                    processLog.log("Exp times for dark and science frames do not match!",3)
+                processLog.log("Exposure time for dark: "+str(mv.darkExp)+" s")
                 prihdr['EXPTIME'] = str(float(footer_metadata.find(name='ExposureTime').text)/1000.)
                 #prihdr['SOFTWARE'] = footer_metadata.find(name='Origin')
                 prihdr['SHUTTER'] = footer_metadata.find(name='Mode').text
                 if footer_metadata.find(name='Mode').text != 'AlwaysClosed':
                     prihdr['WARNING'] = 'Shutter not closed for dark frame.'
-                    log("Shutter not closed for dark frame.",3)
+                    processLog.log("Shutter not closed for dark frame.",3)
                 else:
                     mv.darkDark=True
             else:
                 prihdr['WARNING'] = "No XML footer metadata."
-                log("No XML footer metadata.",3)
+                processLog.log("No XML footer metadata.",3)
             #Set up fits object
             hdu = fits.PrimaryHDU(mv.dark,header=prihdr)
             darkpath = os.path.dirname(fname)
             fitsfilename = 'master_'+os.path.basename(fname).split('.spe')[0]+'.fits'
-            log("Writing master dark as "+fitsfilename)
+            processLog.log("Writing master dark as "+fitsfilename)
             hdu.writeto(os.path.join(darkpath, fitsfilename),clobber=True)
             #Close SPE
             dspe.close()
         #option to load as fits
         elif fname[-5:]=='.fits':
-            log("Opening dark file "+fname,1)
+            processLog.log("Opening dark file "+fname,1)
             hdulist = fits.open(fname)
             prihdr = hdulist[0].header
             mv.dark=hdulist[0].data
             mv.darkExp = np.round(float(prihdr['EXPTIME']))
             if mv.darkExp != mv.exptime:
-                log("Exp times for dark and science frames do not match!",3)
-            log("Exposure time for dark: "+str(mv.darkExp)+" s")
-            log("Mean dark counts: "+str(np.mean(dark)))
+                processLog.log("Exp times for dark and science frames do not match!",3)
+            processLog.log("Exposure time for dark: "+str(mv.darkExp)+" s")
+            processLog.log("Mean dark counts: "+str(np.mean(dark)))
             if prihdr['SHUTTER'] != 'AlwaysClosed':
                 prihdr['WARNING'] = 'Shutter not closed for dark frame.'
-                log("Shutter not closed for dark frame.",3)
+                processLog.log("Shutter not closed for dark frame.",3)
             else:
                 mv.darkDark=True
             mv.darkExists = True
             processframe()
             displayFrame(autoscale=True,markstars=False)
             hdulist.close()
-        else: log("Invalid file type (must be SPE or FITS).",3)
+        else: processLog.log("Invalid file type (must be SPE or FITS).",3)
         
         
     #Load Dark frames for flat calibration
@@ -334,7 +336,7 @@ class WithMenu(QtGui.QMainWindow):
         fname = str(QtGui.QFileDialog.getOpenFileName(self, 'Open SPE dark for flat calibration', 
                 mv.defaultdir,filter='Data (*.spe *.fits)'))
         if fname[-4:]=='.spe':
-            log("Opening dark file "+fname+" for flat calibration.",1)
+            processLog.log("Opening dark file "+fname+" for flat calibration.",1)
             dspe = read_spe.File(str(fname))
             num_darks=dspe.get_num_frames()
             #get all frames in SPE file
@@ -346,7 +348,7 @@ class WithMenu(QtGui.QMainWindow):
                 frames=np.concatenate((frames,[thisframe]),0)
             mv.darkForFlat=np.median(frames,axis=0)
             mv.darkForFlatExists = True
-            log("Mean dark counts for flat: "+str(np.mean(mv.darkForFlat)))
+            processLog.log("Mean dark counts for flat: "+str(np.mean(mv.darkForFlat)))
             
             #Write out master dark file as fits     
             #Set up header
@@ -367,45 +369,45 @@ class WithMenu(QtGui.QMainWindow):
                 prihdr['TRIGGER'] = footer_metadata.find(name='TriggerResponse').text
                 prihdr['COMMENT'] = "SPE file has footer metadata"
                 mv.darkForFlatExp=np.round(float(footer_metadata.find(name='ExposureTime').text)/1000.)
-                log("Exposure time for dark for flat: "+str(mv.darkForFlatExp)+" s")
+                processLog.log("Exposure time for dark for flat: "+str(mv.darkForFlatExp)+" s")
                 prihdr['EXPTIME'] = str(float(footer_metadata.find(name='ExposureTime').text)/1000.)
                 #prihdr['SOFTWARE'] = footer_metadata.find(name='Origin')
                 prihdr['SHUTTER'] = footer_metadata.find(name='Mode').text
                 if footer_metadata.find(name='Mode').text != 'AlwaysClosed':
                     prihdr['WARNING'] = 'Shutter not closed for dark frame.'
-                    log("Shutter not closed for dark frame.",3)
+                    processLog.log("Shutter not closed for dark frame.",3)
                 else:
                     mv.darkForFlatDark=True
             else:
                 prihdr['WARNING'] = "No XML footer metadata."
-                log("No XML footer metadata.",3)
+                processLog.log("No XML footer metadata.",3)
             #Set up fits object
             hdu = fits.PrimaryHDU(mv.darkForFlat,header=prihdr)
             darkpath = os.path.dirname(fname)
             fitsfilename = 'master_'+os.path.basename(fname).split('.spe')[0]+'.fits'
-            log("Writing master dark as "+fitsfilename)
+            processLog.log("Writing master dark as "+fitsfilename)
             hdu.writeto(os.path.join(darkpath, fitsfilename),clobber=True)
             #Close SPE
             dspe.close()
         #Option to load as Fits
         elif fname[-5:]=='.fits':
-            log("Opening dark file "+fname+" for flat calibration.",1)
+            processLog.log("Opening dark file "+fname+" for flat calibration.",1)
             hdulist = fits.open(fname)
             prihdr = hdulist[0].header
             mv.darkForFlat=hdulist[0].data
             mv.darkForFlatExp = np.round(float(prihdr['EXPTIME']))
-            log("Exposure time for dark for flat: "+str(mv.darkForFlatExp)+" s")
-            log("Mean dark counts: "+str(np.mean(mv.darkForFlat)))
+            processLog.log("Exposure time for dark for flat: "+str(mv.darkForFlatExp)+" s")
+            processLog.log("Mean dark counts: "+str(np.mean(mv.darkForFlat)))
             if prihdr['SHUTTER'] != 'AlwaysClosed':
                 prihdr['WARNING'] = 'Shutter not closed for dark frame.'
-                log("Shutter not closed for dark frame for flat.",3)
+                processLog.log("Shutter not closed for dark frame for flat.",3)
             else:
                 mv.darkForFlatDark=True
             mv.darkForFlatExists = True
             processframe()
             displayFrame(autoscale=True,markstars=False)
             hdulist.close()            
-        else: log("Invalid file type (must be SPE or FITS).",3)        
+        else: processLog.log("Invalid file type (must be SPE or FITS).",3)        
         
         
     #Load Flat frames
@@ -414,9 +416,9 @@ class WithMenu(QtGui.QMainWindow):
                 mv.defaultdir,filter='Data (*.spe *.fits)'))
         if fname[-4:]=='.spe':
             if mv.darkForFlatExists == False:
-                log("Import dark for reducting flats before importing flat SPE file.",3)
+                processLog.log("Import dark for reducting flats before importing flat SPE file.",3)
             else:
-                log("Opening flat file "+fname,1)
+                processLog.log("Opening flat file "+fname,1)
                 fspe = read_spe.File(fname)
                 num_flats=fspe.get_num_frames()
                 #get all frames in SPE file
@@ -434,7 +436,7 @@ class WithMenu(QtGui.QMainWindow):
                     frames=np.concatenate((frames,[thisframe/modes[i]]),0)
                 mv.flat=np.median(frames,axis=0)
                 mv.flatExists=True
-                log("Median flat counts: "+str(np.median(modes)))
+                processLog.log("Median flat counts: "+str(np.median(modes)))
                 processframe()
                 displayFrame(autoscale=True,markstars=False)
                 
@@ -462,29 +464,29 @@ class WithMenu(QtGui.QMainWindow):
                     if flatexptime == mv.darkForFlatExp:
                         mv.flatReduced = True
                     else:
-                        log("Exp times for dark and flat do not match!",3)
+                        processLog.log("Exp times for dark and flat do not match!",3)
                         if mv.darkForFlatExp == 0:
-                            log("Bias being used for flat subtraction.",1)
+                            processLog.log("Bias being used for flat subtraction.",1)
                             mv.flatReduced=True
                     #prihdr['SOFTWARE'] = footer_metadata.find(name='Origin')
                     prihdr['SHUTTER'] = footer_metadata.find(name='Mode').text
                     prihdr['REDUCED'] = dt.datetime.now().isoformat()
                 else:
                     prihdr['WARNING'] = "No XML footer metadata."
-                    log("No XML footer metadata.",3)
+                    processLog.log("No XML footer metadata.",3)
                             #Set up fits object
                 #Only write flat if properly dark subtracted:
                 if mv.darkForFlatDark and mv.flatReduced:
                     hdu = fits.PrimaryHDU(mv.flat,header=prihdr)
                     flatpath = os.path.dirname(fname)
                     fitsfilename = 'master_'+os.path.basename(fname).split('.spe')[0]+'.fits'
-                    log("Writing master flat as "+fitsfilename)
+                    processLog.log("Writing master flat as "+fitsfilename)
                     hdu.writeto(os.path.join(flatpath, fitsfilename),clobber=True)
                 #Close SPE
                 fspe.close()
         #Option to load as Fits
         elif fname[-5:]=='.fits':
-            log("Opening flat file "+fname,1)
+            processLog.log("Opening flat file "+fname,1)
             hdulist = fits.open(fname)
             prihdr = hdulist[0].header
             mv.flat=hdulist[0].data
@@ -493,17 +495,17 @@ class WithMenu(QtGui.QMainWindow):
             if flatmode == 1: #Properly normalized?
                 mv.flatReduced=True
             else:
-                log("Mode of master flat is "+str(flatmode)+". Not properly normalized?",3)
+                processLog.log("Mode of master flat is "+str(flatmode)+". Not properly normalized?",3)
             processframe()
             displayFrame(autoscale=True,markstars=False)
             hdulist.close()            
 
-        else: log("Invalid file type (must be SPE).",3)
+        else: processLog.log("Invalid file type (must be SPE).",3)
 
     
     #Restore previously "bad" points
     def restorePts(self):
-        log("Deselecting "+str(len(mv.bad))+" points.")
+        processLog.log("Deselecting "+str(len(mv.bad))+" points.")
         mv.bad=[]
         updatelcs(i=mv.framenum)
     
@@ -525,7 +527,7 @@ class WithMenu(QtGui.QMainWindow):
         #Do aperture photometry on selected stars
         if mv.stage == 1:
             if len(mv.stars) == 0:
-                log("No stars selected.  Select stars before running.",3)
+                processLog.log("No stars selected.  Select stars before running.",3)
             else:
                 mv.numstars = len(mv.stars)
                 #Write original coordinates and seeing to phot_coords.orig
@@ -614,31 +616,9 @@ d1.addWidget(w1)
 ## Process Log
 # Records activity.
 w2 = pg.LayoutWidget()
-processLog = QtGui.QTextEdit()
-processLog.setReadOnly(True)
+processLog = ProcessLog()
 w2.addWidget(processLog, 0, 0, 6, 1)
 d2.addWidget(w2)
-# This widget need special functions to get messages:
-def log(text,level=0):
-    '''log messages to the process log and log file
-    
-    text is the message for the log
-    level indicated how important it is:
-    level=0: Routine background process: gray text;
-    level=1: User influenced action: black text;
-    level=2: Major change: bold black;
-    level=3: Warning message: bold red; 
-    '''
-    text=str(text)
-    colors = ['darkgray','black','black','red']
-    prefix = ['','','','WARNING: ']
-    fontweight = [50,50,75,75]
-    if level in range(4):
-        processLog.setTextColor(QtGui.QColor(colors[level]))
-        processLog.setFontWeight(fontweight[level])
-        processLog.append(prefix[level]+text)
-    else: log('Level assigned to message "'+text+'" out of range.',level=3)
-
 
 ## Light Curve
 # It's a plot
@@ -717,7 +697,7 @@ def click(event):#Linked to image click event
         #x and y are swapped in the GUI!
         x=pos.x()
         y=pos.y()
-        #log('Clicked at ({:.2f}, {:.2f})'.format(x,y),level=0)
+        #processLog.log('Clicked at ({:.2f}, {:.2f})'.format(x,y),level=0)
         #improve coordinates
         dx,dy,newseeing = improvecoords(x,y)
         #round originals so original position *within* pixel doesn't affect answer
@@ -732,7 +712,7 @@ def click(event):#Linked to image click event
         #Set up plot for raw counts and seeing:
         rawcounts.append(pg.ScatterPlotItem(pen=pencolors[len(mv.stars)-1],symbol='o',size=1))
         seeingplots.append(pg.PlotCurveItem(pen=seeingcolors[len(mv.stars)-1]))
-        log('Star selected at ({:.2f}, {:.2f})'.format(newcoords[0],newcoords[1]),level=1)
+        processLog.log('Star selected at ({:.2f}, {:.2f})'.format(newcoords[0],newcoords[1]),level=1)
         
     elif event.button() == 2: 
         event.accept()#Passed on to other functionality if not accepted.
@@ -779,10 +759,10 @@ win.raise_()
 
 # I think everything is set up enough to start doing stuff
 # Send initial message to process log.
-log("ProEMOnline initialized",2)
+processLog.log("ProEMOnline initialized",2)
 #log("Development version.  Do not trust.",3)
 stagechange(0)
-log("Open SPE file to begin analysis.",1)
+processLog.log("Open SPE file to begin analysis.",1)
 
 
 
@@ -803,9 +783,9 @@ def stage1(fname):
     #Read in SPE data
     mv.spe = read_spe.File(mv.spefile)
     mv.binning = 1024/mv.spe.get_frame(0)[0].shape[0]
-    log(str(mv.spe.get_num_frames()) + ' frames read in.')
+    processLog.log(str(mv.spe.get_num_frames()) + ' frames read in.')
     mv.exptime=getexptime(mv.spe)
-    log('Inferred exposure time: '+str(mv.exptime)+' s')
+    processLog.log('Inferred exposure time: '+str(mv.exptime)+' s')
     if hasattr(mv.spe, 'footer_metadata'): 
         #log('SPE file has footer.')
         mv.exptime=np.round(float(BeautifulSoup(mv.spe.footer_metadata, "xml").find(name='ExposureTime').text)/1000.)
@@ -814,7 +794,7 @@ def stage1(fname):
     processframe()
     displayFrame(autoscale=True,markstars=False)
     #Load calibration frames and set up
-    log("Please load dark, flat, and dark for flat files",1)
+    processLog.log("Please load dark, flat, and dark for flat files",1)
     mv.dark = np.zeros(mv.img[0].shape)
     mv.flat = np.ones(mv.img[0].shape)
     #Select stars:
@@ -982,14 +962,14 @@ def improvecoords(x,y,i=mv.framenum,pixdist=10,fwhm=4.0,sigma=5.):
     #check that unique source found
     '''
     if len(sources) == 0:
-        log("Frame #"+str(i),1)
-        log("WARNING: no sources found in searched region near ({:.2f}, {:.2f}).".format(x,y))
+        processLog.log("Frame #"+str(i),1)
+        processLog.log("WARNING: no sources found in searched region near ({:.2f}, {:.2f}).".format(x,y))
         #delta = [0,0] in this case
     else:
         if len(sources) > 1:
-            log("Frame #"+str(i),1)
-            log("WARNING: non-unique solution found for target near ({:.2f}, {:.2f}).".format(x,y))
-            log(str(len(sources))+" signals in window.  Using brightest.")
+            processLog.log("Frame #"+str(i),1)
+            processLog.log("WARNING: non-unique solution found for target near ({:.2f}, {:.2f}).".format(x,y))
+            processLog.log(str(len(sources))+" signals in window.  Using brightest.")
         #Take brightest star found
     '''
 
@@ -1024,8 +1004,8 @@ def improvecoords(x,y,i=mv.framenum,pixdist=10,fwhm=4.0,sigma=5.):
 r_in = 16.  #inner sky annulus radius #change in terms of binning eventually
 r_out = 24. #outer sky annulus radius #change in terms of binning eventually
 def setApSize(size):
-    log("Aperture size set to "+str(size)+" pixels.",1)
-    #log("(Updates on next frame.)")
+    processLog.log("Aperture size set to "+str(size)+" pixels.",1)
+    #processLog.log("(Updates on next frame.)")
     if size in mv.apsizes:
         mv.apsizeindex=np.where(mv.apsizes == size)[0][0]
         targs.setSize(2*size)# Currently doesn't update until next click/frame
@@ -1035,7 +1015,7 @@ def setApSize(size):
 
 def setCompStar(s):
     mv.compstar = s
-    log("Now dividing by comparsion star #"+str(s),1)
+    processLog.log("Now dividing by comparsion star #"+str(s),1)
     updatelcs(mv.framenum)
 
 
@@ -1071,12 +1051,12 @@ def stage2():
         if fsize_spe_new > mv.fsize_spe_old:
             mv.spe = read_spe.File(mv.spefile)
             mv.numframes = spe.get_num_frames()
-            log('Processing frames '+str(mv.framenum)+'-'+str(mv.numframes),1)
+            processLog.log('Processing frames '+str(mv.framenum)+'-'+str(mv.numframes),1)
             while mv.framenum < mv.numframes:
                 nextframe()
             if hasattr(mv.spe, 'footer_metadata'): 
                 mv.hasFooter = True
-                log('SPE footer detected. Data acquisition complete.',2)
+                processLog.log('SPE footer detected. Data acquisition complete.',2)
                 stagechange(3)
             mv.spe.close()
         mv.fsize_spe_old = fsize_spe_new
@@ -1092,8 +1072,8 @@ def updatehack():
         if fsize_spe_new > mv.fsize_spe_old and mv.stage ==2:
             mv.spe = read_spe.File(mv.spefile)
             mv.numframes = mv.spe.get_num_frames()
-            if mv.framenum+1==mv.numframes-1:log('Processing frame '+str(mv.framenum+1))
-            else: log('Processing frames '+str(mv.framenum+1)+'-'+str(mv.numframes-1),1)        
+            if mv.framenum+1==mv.numframes-1:processLog.log('Processing frame '+str(mv.framenum+1))
+            else: processLog.log('Processing frames '+str(mv.framenum+1)+'-'+str(mv.numframes-1),1)        
             timer.start(100)
             #Update plots
             updatelcs(i=mv.framenum)
@@ -1110,9 +1090,9 @@ def nextframehack():
         timer.stop()
         updateft(i=mv.framenum)
         if mv.hasFooter:
-            log('SPE footer detected. Data acquisition complete.',2)
+            processLog.log('SPE footer detected. Data acquisition complete.',2)
             stagechange(3)
-            log("Image processing complete",2)
+            processLog.log("Image processing complete",2)
             writetimestamps()
             displayFrame(autoscale=True)
             
@@ -1254,10 +1234,10 @@ class smoothingkernel:
             u=(2.*np.arange(width)/(float(width)-1.))-0.5
             self.kernel = 0.75*(1.-u**2.)
             self.kernel /= np.sum(self.kernel)
-            log("Using "+self.types[kerneltype]+" smoothing kernel of width "+str(width))
+            processLog.log("Using "+self.types[kerneltype]+" smoothing kernel of width "+str(width))
         elif kerneltype == 0: #Uniform
             self.kernel = np.ones(width)/float(width)
-            log("Using "+self.types[kerneltype]+" smoothing kernel of width "+str(width))
+            processLog.log("Using "+self.types[kerneltype]+" smoothing kernel of width "+str(width))
     def openKernelDialog(self):
             dkerneltype,dwidth,daccepted = KernelDialog.getKernelFormat()
             if daccepted and (dkerneltype in range(len(kerneltypes))) and (dwidth > 1): 
@@ -1348,7 +1328,7 @@ class Stage2Thread(QtCore.QThread):
 #Write timestamps
 def writetimestamps():
     fpath_csv = os.path.splitext(mv.spefile)[0]+'_timestamps.csv'
-    log("Writing absolute timestamps to file "+fpath_csv,2)
+    processLog.log("Writing absolute timestamps to file "+fpath_csv,2)
     if hasattr(mv.spe, 'footer_metadata'):
         footer_metadata = BeautifulSoup(mv.spe.footer_metadata, "xml")
         trigger_response = footer_metadata.find(name='TriggerResponse').text
@@ -1356,7 +1336,7 @@ def writetimestamps():
         dt_begin = dateutil.parser.parse(ts_begin)
         ticks_per_second = int(footer_metadata.find(name='TimeStamp', event='ExposureStarted').attrs['resolution'])
     else:
-        log(("No XML footer metadata.\n" +
+        processLog.log(("No XML footer metadata.\n" +
                "Unknown trigger response.\n" +
                "Using file creation time as absolute timestamp.\n" +
                "Assuming 1E6 ticks per seconds."),3)
@@ -1372,9 +1352,9 @@ def writetimestamps():
     df_metadata = df_metadata[['time_stamp_exposure_started', 'time_stamp_exposure_ended']].applymap(lambda x: x / ticks_per_second)
     df_metadata = df_metadata[['time_stamp_exposure_started', 'time_stamp_exposure_ended']].applymap(lambda x : dt_begin + dt.timedelta(seconds=x))
     df_metadata[['diff_time_stamp_exposure_started', 'diff_time_stamp_exposure_ended']] = df_metadata - df_metadata.shift()
-    log("Trigger response = {tr}".format(tr=trigger_response))
-    log("Absolute timestamp = {dt_begin}".format(dt_begin=dt_begin))
-    log("Ticks per second = {tps}".format(tps=ticks_per_second))
+    processLog.log("Trigger response = {tr}".format(tr=trigger_response))
+    processLog.log("Absolute timestamp = {dt_begin}".format(dt_begin=dt_begin))
+    processLog.log("Ticks per second = {tps}".format(tps=ticks_per_second))
     df_metadata.head()
     
     # Write out as CSV to source directory of SPE file.
