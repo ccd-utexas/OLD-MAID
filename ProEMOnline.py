@@ -37,6 +37,7 @@ from bs4 import BeautifulSoup
 # Local modules.
 import read_spe
 import mainvars as mv
+import spephot
 from ProcessLog import ProcessLog
 from ImageDisplay import ImageDisplay
 from FTPlot import FTPlot
@@ -244,177 +245,40 @@ class WithMenu(QtGui.QMainWindow):
             subprocess.Popen(["python",os.path.join(os.path.dirname(os.path.abspath(__file__)),'toAutoguider.py'),mv.spefile])
         else:
             processLog.log("Open SPE file first before trying to send data to Guide82.",3)
-    #Load Dark frames
+            
     def openDark(self):
         fname = str(QtGui.QFileDialog.getOpenFileName(self, 'Open dark file', 
                 mv.defaultdir,filter='Data (*.spe *.fits)'))
-        if fname[-4:]=='.spe':
+        if fname:
             processLog.log("Opening dark file "+fname,1)
-            dspe = read_spe.File(fname)
-            num_darks=dspe.get_num_frames()
-            #get all frames in SPE file
-            #stack as 3D numpy array
-            (frames,_)=dspe.get_frame(0)
-            frames=np.array([frames])
-            for i in range(1,num_darks):
-                (thisframe,_)=dspe.get_frame(i)
-                frames=np.concatenate((frames,[thisframe]),0)
-            mv.dark=np.median(frames,axis=0)
-            mv.darkExists = True
-            
+            mv.dark, mv.darkExp, warnings = spephot.openDark(fname)
+            if warnings: processLog.log(warnings,3)
             processLog.log("Mean dark counts: "+str(np.mean(mv.dark)))
-            processframe()
-            displayFrame(autoscale=True,markstars=False)
-            
-            #Write out master dark file as fits     
-            #Set up header
-            prihdr = fits.Header()
-            prihdr['OBJECT'] = 'dark'
-            prihdr['IMAGETYP'] = 'dark'
-            prihdr['REDUCED'] = dt.datetime.now().isoformat()
-            prihdr['COMMENT'] = "Reduced by Keaton Bell's OLD MAID Software"
-            if hasattr(dspe, 'footer_metadata'):
-                footer_metadata = BeautifulSoup(dspe.footer_metadata, "xml")
-                ts_begin = footer_metadata.find(name='TimeStamp', event='ExposureStarted').attrs['absoluteTime']
-                dt_begin = dateutil.parser.parse(ts_begin)
-                prihdr['TICKRATE'] = int(footer_metadata.find(name='TimeStamp', event='ExposureStarted').attrs['resolution'])
-                prihdr['DATE-OBS'] = str(dt_begin.isoformat())
-                prihdr['XBINNING'] = footer_metadata.find(name="SensorMapping").attrs['xBinning']
-                prihdr['YBINNING'] = footer_metadata.find(name="SensorMapping").attrs['yBinning']
-                prihdr['INSTRUME'] = footer_metadata.find(name="Camera").attrs['model']
-                prihdr['TRIGGER'] = footer_metadata.find(name='TriggerResponse').text
-                prihdr['COMMENT'] = "SPE file has footer metadata"
-                mv.darkExp=np.round(float(footer_metadata.find(name='ExposureTime').text)/1000.)
-                if mv.darkExp != mv.exptime:
-                    processLog.log("Exp times for dark and science frames do not match!",3)
-                processLog.log("Exposure time for dark: "+str(mv.darkExp)+" s")
-                prihdr['EXPTIME'] = str(float(footer_metadata.find(name='ExposureTime').text)/1000.)
-                #prihdr['SOFTWARE'] = footer_metadata.find(name='Origin')
-                prihdr['SHUTTER'] = footer_metadata.find(name='Mode').text
-                if footer_metadata.find(name='Mode').text != 'AlwaysClosed':
-                    prihdr['WARNING'] = 'Shutter not closed for dark frame.'
-                    processLog.log("Shutter not closed for dark frame.",3)
-                else:
-                    mv.darkDark=True
-            else:
-                prihdr['WARNING'] = "No XML footer metadata."
-                processLog.log("No XML footer metadata.",3)
-            #Set up fits object
-            hdu = fits.PrimaryHDU(mv.dark,header=prihdr)
-            darkpath = os.path.dirname(fname)
-            fitsfilename = 'master_'+os.path.basename(fname).split('.spe')[0]+'.fits'
-            processLog.log("Writing master dark as "+fitsfilename)
-            hdu.writeto(os.path.join(darkpath, fitsfilename),clobber=True)
-            #Close SPE
-            dspe.close()
-        #option to load as fits
-        elif fname[-5:]=='.fits':
-            processLog.log("Opening dark file "+fname,1)
-            hdulist = fits.open(fname)
-            prihdr = hdulist[0].header
-            mv.dark=hdulist[0].data
-            mv.darkExp = np.round(float(prihdr['EXPTIME']))
             if mv.darkExp != mv.exptime:
                 processLog.log("Exp times for dark and science frames do not match!",3)
             processLog.log("Exposure time for dark: "+str(mv.darkExp)+" s")
-            processLog.log("Mean dark counts: "+str(np.mean(dark)))
-            if prihdr['SHUTTER'] != 'AlwaysClosed':
-                prihdr['WARNING'] = 'Shutter not closed for dark frame.'
-                processLog.log("Shutter not closed for dark frame.",3)
-            else:
-                mv.darkDark=True
-            mv.darkExists = True
-            processframe()
-            displayFrame(autoscale=True,markstars=False)
-            hdulist.close()
-        else: processLog.log("Invalid file type (must be SPE or FITS).",3)
-        
+
         
     #Load Dark frames for flat calibration
     def openDarkForFlats(self):
         fname = str(QtGui.QFileDialog.getOpenFileName(self, 'Open SPE dark for flat calibration', 
                 mv.defaultdir,filter='Data (*.spe *.fits)'))
-        if fname[-4:]=='.spe':
-            processLog.log("Opening dark file "+fname+" for flat calibration.",1)
-            dspe = read_spe.File(str(fname))
-            num_darks=dspe.get_num_frames()
-            #get all frames in SPE file
-            #stack as 3D numpy array
-            (frames,_)=dspe.get_frame(0)
-            frames=np.array([frames])
-            for i in range(1,num_darks):
-                (thisframe,_)=dspe.get_frame(i)
-                frames=np.concatenate((frames,[thisframe]),0)
-            mv.darkForFlat=np.median(frames,axis=0)
-            mv.darkForFlatExists = True
-            processLog.log("Mean dark counts for flat: "+str(np.mean(mv.darkForFlat)))
-            
-            #Write out master dark file as fits     
-            #Set up header
-            prihdr = fits.Header()
-            prihdr['OBJECT'] = 'dark'
-            prihdr['IMAGETYP'] = 'dark'
-            prihdr['REDUCED'] = dt.datetime.now().isoformat()
-            prihdr['COMMENT'] = "Reduced by Keaton Bell's OLD MAID Software"
-            if hasattr(dspe, 'footer_metadata'):
-                footer_metadata = BeautifulSoup(dspe.footer_metadata, "xml")
-                ts_begin = footer_metadata.find(name='TimeStamp', event='ExposureStarted').attrs['absoluteTime']
-                dt_begin = dateutil.parser.parse(ts_begin)
-                prihdr['TICKRATE'] = int(footer_metadata.find(name='TimeStamp', event='ExposureStarted').attrs['resolution'])
-                prihdr['DATE-OBS'] = str(dt_begin.isoformat())
-                prihdr['XBINNING'] = footer_metadata.find(name="SensorMapping").attrs['xBinning']
-                prihdr['YBINNING'] = footer_metadata.find(name="SensorMapping").attrs['yBinning']
-                prihdr['INSTRUME'] = footer_metadata.find(name="Camera").attrs['model']
-                prihdr['TRIGGER'] = footer_metadata.find(name='TriggerResponse').text
-                prihdr['COMMENT'] = "SPE file has footer metadata"
-                mv.darkForFlatExp=np.round(float(footer_metadata.find(name='ExposureTime').text)/1000.)
-                processLog.log("Exposure time for dark for flat: "+str(mv.darkForFlatExp)+" s")
-                prihdr['EXPTIME'] = str(float(footer_metadata.find(name='ExposureTime').text)/1000.)
-                #prihdr['SOFTWARE'] = footer_metadata.find(name='Origin')
-                prihdr['SHUTTER'] = footer_metadata.find(name='Mode').text
-                if footer_metadata.find(name='Mode').text != 'AlwaysClosed':
-                    prihdr['WARNING'] = 'Shutter not closed for dark frame.'
-                    processLog.log("Shutter not closed for dark frame.",3)
-                else:
-                    mv.darkForFlatDark=True
-            else:
-                prihdr['WARNING'] = "No XML footer metadata."
-                processLog.log("No XML footer metadata.",3)
-            #Set up fits object
-            hdu = fits.PrimaryHDU(mv.darkForFlat,header=prihdr)
-            darkpath = os.path.dirname(fname)
-            fitsfilename = 'master_'+os.path.basename(fname).split('.spe')[0]+'.fits'
-            processLog.log("Writing master dark as "+fitsfilename)
-            hdu.writeto(os.path.join(darkpath, fitsfilename),clobber=True)
-            #Close SPE
-            dspe.close()
-        #Option to load as Fits
-        elif fname[-5:]=='.fits':
-            processLog.log("Opening dark file "+fname+" for flat calibration.",1)
-            hdulist = fits.open(fname)
-            prihdr = hdulist[0].header
-            mv.darkForFlat=hdulist[0].data
-            mv.darkForFlatExp = np.round(float(prihdr['EXPTIME']))
-            processLog.log("Exposure time for dark for flat: "+str(mv.darkForFlatExp)+" s")
+        if fname:
+            processLog.log("Opening dark file for flats "+fname,1)
+            mv.darkForFlat, mv.darkForFlatExp, warnings = spephot.openDark(fname)
+            if warnings: 
+                processLog.log(warnings,3)
+                mv.darkForFlatExp = None #This is how we flag to not write the reduced flat to fits
             processLog.log("Mean dark counts: "+str(np.mean(mv.darkForFlat)))
-            if prihdr['SHUTTER'] != 'AlwaysClosed':
-                prihdr['WARNING'] = 'Shutter not closed for dark frame.'
-                processLog.log("Shutter not closed for dark frame for flat.",3)
-            else:
-                mv.darkForFlatDark=True
-            mv.darkForFlatExists = True
-            processframe()
-            displayFrame(autoscale=True,markstars=False)
-            hdulist.close()            
-        else: processLog.log("Invalid file type (must be SPE or FITS).",3)        
-        
-        
+            processLog.log("Exposure time for dark for flats: "+str(mv.darkForFlatExp)+" s")
+
+
     #Load Flat frames
     def openFlat(self):
         fname = str(QtGui.QFileDialog.getOpenFileName(self, 'Open SPE flat file', 
                 mv.defaultdir,filter='Data (*.spe *.fits)'))
         if fname[-4:]=='.spe':
-            if mv.darkForFlatExists == False:
+            if mv.darkForFlat == None:
                 processLog.log("Import dark for reducting flats before importing flat SPE file.",3)
             else:
                 processLog.log("Opening flat file "+fname,1)
@@ -475,7 +339,7 @@ class WithMenu(QtGui.QMainWindow):
                     processLog.log("No XML footer metadata.",3)
                             #Set up fits object
                 #Only write flat if properly dark subtracted:
-                if mv.darkForFlatDark and mv.flatReduced:
+                if (mv.darkExp is not None) and mv.flatReduced:
                     hdu = fits.PrimaryHDU(mv.flat,header=prihdr)
                     flatpath = os.path.dirname(fname)
                     fitsfilename = 'master_'+os.path.basename(fname).split('.spe')[0]+'.fits'
@@ -813,7 +677,7 @@ def getexptime(thisspe):
 def processframe(i=0):
     (thisframe,thistime) = mv.spe.get_frame(i)
     #calibrate (doesn't do anything if calibration frames are not available):
-    if mv.darkExists: thisframe=(thisframe-mv.dark)
+    if mv.darkExp: thisframe=(thisframe-mv.dark)
     if mv.flatExists: thisframe=thisframe/mv.flat
     #read in frame
     mv.img=np.transpose(thisframe)
