@@ -39,7 +39,7 @@ import read_spe
 import mainvars as mv
 from ProcessLog import ProcessLog
 from ImageDisplay import ImageDisplay
-
+from FTPlot import FTPlot
 
 
 
@@ -679,9 +679,8 @@ seeingplots = []
 
 
 ## Fourier Transform
-w3 = pg.PlotWidget(title="Fourier Transform",labels={'left': 'amplitude (mma)', 'bottom': 'freq (muHz)'})
-ft = w3.plot(pen='y')
-d3.addWidget(w3)
+ftplot = FTPlot()
+d3.addWidget(ftplot)
 
 
 ## Image
@@ -1266,26 +1265,22 @@ def updateftfromtimer():
     updateft(i=mv.framenum)
 
 def updateft(i=mv.framenum):
-        oversample=10. #Oversampling factor
         goodmask=np.ones(i+1, np.bool)
         goodmask[mv.bad] = False
         targdivided = mv.photresults[:i+1,0,mv.apsizeindex]/mv.photresults[:i+1,mv.compstar,mv.apsizeindex]
         goodfluxnorm=targdivided[goodmask[:i+1]]/np.abs(np.mean(targdivided[goodmask[:i+1]]))
         times = np.arange(i+1)#Multiply by exptime for timestamps
         #Fourier Transform   and smoothed lc  
+        ftplot.calcft(times*mv.exptime,goodfluxnorm-1.,mv.exptime)
+        
+        #Smoothed LC
         if goodmask.sum() > 2:
             #This all requires at least two points
             #Only update once per file read-in
             interped = interp1d(mv.exptime*times[goodmask[:i+1]],goodfluxnorm-1.)
             xnew = np.arange(mv.exptime*min(times[goodmask[:i]]),mv.exptime*max(times[goodmask[:i+1]]),mv.exptime)
             ynew = interped(xnew)
-            #calculate FT
-            amp = 2.*np.abs(fft(ynew,n=len(ynew)*oversample))#FFT
-            amp /= float(len(ynew))
-            freq = fftfreq(len(amp),d=mv.exptime)
-            pos = freq>=0 # keep positive part
-            
-            ft.setData(1e6*freq[pos],1e3*amp[pos])
+
             #Smoothed LC
             #Update if there are enough points:
             if len(ynew) > kernel.width:
