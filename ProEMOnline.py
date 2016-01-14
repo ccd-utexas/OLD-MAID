@@ -34,12 +34,11 @@ from photutils import daofind
 from photutils import CircularAperture, CircularAnnulus, aperture_photometry
 from pyqtgraph.dockarea import *
 from bs4 import BeautifulSoup
-import matplotlib.pyplot as plt
 # Local modules.
 import read_spe
 import mainvars as mv
 from ProcessLog import ProcessLog
-
+from ImageDisplay import ImageDisplay
 
 
 
@@ -686,8 +685,7 @@ d3.addWidget(w3)
 
 
 ## Image
-w5 = pg.ImageView()
-w5.ui.roiBtn.hide()
+imageDisplay = ImageDisplay()
 #w5.ui.normBtn.hide() #Causing trouble on windows
 #Define function for selecting stars. (must be defined before linking the click action)
 def click(event):#Linked to image click event
@@ -707,8 +705,7 @@ def click(event):#Linked to image click event
         #make menuoption for comp star selection
         if len(mv.stars) > 1: win.addCompStarOption(len(mv.stars)-1)
         #Mark stars in image display
-        targs.setData([p[0] for p in mv.stars],[p[1] for p in mv.stars])
-        targs.setPen(pencolors[0:len(mv.stars)])
+        imageDisplay.displayApertures(mv.stars,4)
         #Set up plot for raw counts and seeing:
         rawcounts.append(pg.ScatterPlotItem(pen=pencolors[len(mv.stars)-1],symbol='o',size=1))
         seeingplots.append(pg.PlotCurveItem(pen=seeingcolors[len(mv.stars)-1]))
@@ -719,7 +716,7 @@ def click(event):#Linked to image click event
         print "RIGHT!"
 
 
-w5.getImageItem().mouseClickEvent = click #Function defined below
+imageDisplay.getImageItem().mouseClickEvent = click #Function defined below
 #w5.keyPressEvent = moveCircles # Seems to be the right thing for detecting frame changes,
 #But I can't connect to it without overriding other behavior.  May need to subclass this.
 
@@ -731,11 +728,9 @@ stringcolors=['red','green','blue','magenta','orange','yellow',
               'hotpink','seagreen','skyblue','salmon','brown','lightyellow']
 pencolors = [pg.mkPen(QtGui.QColor(c), width=3) for c in stringcolors]
 seeingcolors = [pg.mkPen(QtGui.QColor(c), width=1.5) for c in stringcolors]
-targs = pg.ScatterPlotItem(brush=None, pen=pencolors[0],symbol='o',pxMode=False,size=8)
-w5.addItem(targs)
 #Add widget to dock
 
-d5.addWidget(w5)
+d5.addWidget(imageDisplay)
 
 
 
@@ -837,15 +832,6 @@ def processframe(i=0):
         mv.backmed.append(backgroundmed)
         mv.backvar.append(backgroundvar)
     
-    #make display image
-    newdisplayimg=np.copy(mv.img)
-    newdisplayimg[0,0]=0
-    imgvals = newdisplayimg.flatten()
-    img99percentile = np.percentile(imgvals,99)
-    newdisplayimg[newdisplayimg > img99percentile] = img99percentile
-    #log("Framenum: "+str(mv.framenum),2)
-    #Replace if this frame already exists, otherwise append
-    mv.displayimg=newdisplayimg
     mv.framenum=i
     
 #Function to characterize the background to find stellar centroids accurately
@@ -868,6 +854,7 @@ def displayFrame(autoscale=False,markstars=True):
     Return nothing.
     """
     #Make sure i is in range
+    '''
     if autoscale:
         #lowlevel=np.min(thisimg[thisimg > 0])
         lowlevel=np.min(mv.displayimg)
@@ -882,6 +869,10 @@ def displayFrame(autoscale=False,markstars=True):
         targs.setData([p[0] for p in mv.stars[mv.framenum]],[p[1] for p in mv.stars[mv.framenum]])
         targs.setSize(2.*mv.apsizes[mv.apsizeindex])
         targs.setPen(pencolors[0:mv.numstars])
+    '''
+    imageDisplay.displayImage(mv.img)
+    if markstars and len(mv.stars) > 0:
+        imageDisplay.displayApertures(mv.stars[mv.framenum],mv.apsizes[mv.apsizeindex])
         
         
 def selectstars():
@@ -1008,7 +999,8 @@ def setApSize(size):
     #processLog.log("(Updates on next frame.)")
     if size in mv.apsizes:
         mv.apsizeindex=np.where(mv.apsizes == size)[0][0]
-        targs.setSize(2*size)# Currently doesn't update until next click/frame
+        if markstars and len(mv.stars) > 0:
+            imageDisplay.displayApertures(mv.stars[mv.framenum],size)
         if mv.stage > 1: 
             updatelcs(i=mv.framenum)
 
