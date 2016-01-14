@@ -257,7 +257,9 @@ class WithMenu(QtGui.QMainWindow):
             if mv.darkExp != mv.exptime:
                 processLog.log("Exp times for dark and science frames do not match!",3)
             processLog.log("Exposure time for dark: "+str(mv.darkExp)+" s")
-
+            processframe()
+            displayFrame()
+    
         
     #Load Dark frames for flat calibration
     def openDarkForFlats(self):
@@ -277,94 +279,17 @@ class WithMenu(QtGui.QMainWindow):
     def openFlat(self):
         fname = str(QtGui.QFileDialog.getOpenFileName(self, 'Open SPE flat file', 
                 mv.defaultdir,filter='Data (*.spe *.fits)'))
-        if fname[-4:]=='.spe':
-            if mv.darkForFlat == None:
-                processLog.log("Import dark for reducting flats before importing flat SPE file.",3)
-            else:
-                processLog.log("Opening flat file "+fname,1)
-                fspe = read_spe.File(fname)
-                num_flats=fspe.get_num_frames()
-                #get all frames in SPE file
-                #stack as 3D numpy array
-                (frames,_)=fspe.get_frame(0)
-                modes=[]
-                frames = frames - mv.darkForFlat
-                modes.append(stats.mode(frames.flatten())[0][0])
-                frames=np.array([frames/modes[0]])
-                for i in range(1,num_flats):
-                    (thisframe,_)=fspe.get_frame(i)
-                    thisframe = thisframe-mv.darkForFlat
-                    #modes.append(stats.mode(thisframe.flatten())[0][0])
-                    modes.append(np.median(thisframe.flatten()))
-                    frames=np.concatenate((frames,[thisframe/modes[i]]),0)
-                mv.flat=np.median(frames,axis=0)
-                mv.flatExists=True
-                processLog.log("Median flat counts: "+str(np.median(modes)))
-                processframe()
-                displayFrame(autoscale=True,markstars=False)
-                
-                #Write out fits file
-                #Set up header
-                prihdr = fits.Header()
-                prihdr['OBJECT'] = 'flat'
-                prihdr['IMAGETYP'] = 'flat'
-                
-                if hasattr(fspe, 'footer_metadata'):
-                    footer_metadata = BeautifulSoup(fspe.footer_metadata, "xml")
-                    ts_begin = footer_metadata.find(name='TimeStamp', event='ExposureStarted').attrs['absoluteTime']
-                    dt_begin = dateutil.parser.parse(ts_begin)
-                    prihdr['TICKRATE'] = int(footer_metadata.find(name='TimeStamp', event='ExposureStarted').attrs['resolution'])
-                    prihdr['DATE-OBS'] = str(dt_begin.isoformat())
-                    prihdr['XBINNING'] = footer_metadata.find(name="SensorMapping").attrs['xBinning']
-                    prihdr['YBINNING'] = footer_metadata.find(name="SensorMapping").attrs['yBinning']
-                    prihdr['INSTRUME'] = footer_metadata.find(name="Camera").attrs['model']
-                    prihdr['TRIGGER'] = footer_metadata.find(name='TriggerResponse').text
-                    prihdr['MODE'] = 1 #normalized
-                    prihdr['COMMENT'] = "SPE file has footer metadata"
-                    prihdr['EXPTIME'] = str(float(footer_metadata.find(name='ExposureTime').text)/1000.)
-                    flatexptime = np.round(float(footer_metadata.find(name='ExposureTime').text)/1000.)
-                    #check that dark exp time matches flat
-                    if flatexptime == mv.darkForFlatExp:
-                        mv.flatReduced = True
-                    else:
-                        processLog.log("Exp times for dark and flat do not match!",3)
-                        if mv.darkForFlatExp == 0:
-                            processLog.log("Bias being used for flat subtraction.",1)
-                            mv.flatReduced=True
-                    #prihdr['SOFTWARE'] = footer_metadata.find(name='Origin')
-                    prihdr['SHUTTER'] = footer_metadata.find(name='Mode').text
-                    prihdr['REDUCED'] = dt.datetime.now().isoformat()
-                else:
-                    prihdr['WARNING'] = "No XML footer metadata."
-                    processLog.log("No XML footer metadata.",3)
-                            #Set up fits object
-                #Only write flat if properly dark subtracted:
-                if (mv.darkExp is not None) and mv.flatReduced:
-                    hdu = fits.PrimaryHDU(mv.flat,header=prihdr)
-                    flatpath = os.path.dirname(fname)
-                    fitsfilename = 'master_'+os.path.basename(fname).split('.spe')[0]+'.fits'
-                    processLog.log("Writing master flat as "+fitsfilename)
-                    hdu.writeto(os.path.join(flatpath, fitsfilename),clobber=True)
-                #Close SPE
-                fspe.close()
-        #Option to load as Fits
-        elif fname[-5:]=='.fits':
+        if fname:
             processLog.log("Opening flat file "+fname,1)
-            hdulist = fits.open(fname)
-            prihdr = hdulist[0].header
-            mv.flat=hdulist[0].data
-            mv.flatExists = True
-            flatmode= float(prihdr["mode"])
-            if flatmode == 1: #Properly normalized?
-                mv.flatReduced=True
-            else:
-                processLog.log("Mode of master flat is "+str(flatmode)+". Not properly normalized?",3)
+            processLog.log("The program may hang for a moment...",1)
+            mv.flat, warnings = spephot.openFlat(fname,mv.darkForFlat,mv.darkForFlatExp)
+            if warnings:
+                processLog.log(warnings,3)
+            if mv.darkForFlatExp == 0:
+                processLog.log("Bias being used for flat subtraction.",1)
             processframe()
-            displayFrame(autoscale=True,markstars=False)
-            hdulist.close()            
-
-        else: processLog.log("Invalid file type (must be SPE).",3)
-
+            displayFrame()
+    
     
     #Restore previously "bad" points
     def restorePts(self):
@@ -653,8 +578,6 @@ def stage1(fname):
     displayFrame(autoscale=True,markstars=False)
     #Load calibration frames and set up
     processLog.log("Please load dark, flat, and dark for flat files",1)
-    mv.dark = np.zeros(mv.img[0].shape)
-    mv.flat = np.ones(mv.img[0].shape)
     #Select stars:
     selectstars()
     #mv.spe.close() #In real version we'll close spe
@@ -677,8 +600,8 @@ def getexptime(thisspe):
 def processframe(i=0):
     (thisframe,thistime) = mv.spe.get_frame(i)
     #calibrate (doesn't do anything if calibration frames are not available):
-    if mv.darkExp: thisframe=(thisframe-mv.dark)
-    if mv.flatExists: thisframe=thisframe/mv.flat
+    if mv.dark != []: thisframe=(thisframe-mv.dark)
+    if mv.flat != []: thisframe=thisframe/mv.flat
     #read in frame
     mv.img=np.transpose(thisframe)
     backgroundmed,backgroundvar=charbackground()
