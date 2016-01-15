@@ -14,6 +14,7 @@ import datetime as dt
 import dateutil.parser
 from scipy import stats
 from astropy.io import fits
+from astropy.stats import biweight_location, biweight_midvariance
 from bs4 import BeautifulSoup
 import read_spe
 
@@ -162,6 +163,8 @@ def openFlat(fname,darkForFlat,darkForFlatExp):
                 #check that dark exp time matches flat
                 if flatexptime != darkForFlatExp:
                     warnings+="Exp times for dark and flat do not match! "
+                    if darkForFlatExp == 0:
+                       warnings+="Bias being used for flat subtraction. "
                 #prihdr['SOFTWARE'] = footer_metadata.find(name='Origin')
                 prihdr['SHUTTER'] = footer_metadata.find(name='Mode').text
                 prihdr['REDUCED'] = dt.datetime.now().isoformat()
@@ -182,7 +185,8 @@ def openFlat(fname,darkForFlat,darkForFlatExp):
         hdulist = fits.open(fname)
         prihdr = hdulist[0].header
         flat=hdulist[0].data
-        flatmode=stats.mode(flat)[0][0]
+        flatmode=stats.mode(flat.flatten())[0][0]
+        print flatmode
         if flatmode != 1:
             warnings+= "Flat not properly normalized. Mode: "+str(flatmode)
 
@@ -192,4 +196,23 @@ def openFlat(fname,darkForFlat,darkForFlatExp):
     
     return flat,warnings
 
+    
+def charbackground(img):
+    """Characterize the image background, median and variance
+    """
+    backgroundmed = biweight_location(img)
+    backgroundvar = biweight_midvariance(img)
+    return backgroundmed, backgroundvar      
+    
+    
+#Define all the stuff that needs to be done to each incoming frame
+def reduceframe(frame,dark,flat):
+    """Reduce frame with given dark, flat"""
+    if dark != []: frame=(frame-dark)
+    if flat != []: frame=frame/flat
+    #transpose for correct orientation
+    img=np.transpose(frame)
+    return img
+    
+    
     
