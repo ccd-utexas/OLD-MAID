@@ -9,7 +9,6 @@ Define a custom widget that calculates and plots the Fourier transform.
 
 #imports
 import pyqtgraph as pg
-from pyqtgraph.Qt import QtGui
 import numpy as np
 from scipy.interpolate import interp1d
 from scipy.fftpack import fft,fftfreq
@@ -45,15 +44,3 @@ class FTPlot(pg.PlotWidget):
             
             self.plotft(1e6*freq[pos],1e3*amp[pos])
         
-
-'''        self.ft = pg.PlotItem(pen='yellow')
-    self.ft.title="Fourier Transform"
-    self.ft.labels={'left': 'amplitude (mma)', 'bottom': 'freq (muHz)'}
-    self.addItem(self.ft)
-    self.ft.setData(np.arange(10),np.arange(10))
-
-    
-
-self.se
-(title="Fourier Transform",labels={'left': 'amplitude (mma)', 'bottom': 'freq (muHz)'})
-ft = w3.plot(pen='y')'''
