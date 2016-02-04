@@ -14,7 +14,7 @@ class DividedLC(pg.PlotWidget):
     
     def __init__(self):
         super(DividedLC,self).__init__()
-        self.lcline = pg.PlotCurveItem()
+        #self.lcline = pg.PlotCurveItem()
         self.lcscatter = self.plot(brush=(255,0,0), pen='w',symbol='o') #Scatter plot
         self.setTitle("Divided Light Curve")
         self.setLabel('left', 'rel. flux')
@@ -54,12 +54,11 @@ class DividedLC(pg.PlotWidget):
         goodmask[self.badpoints] = False
         compflux = self.flux[:,self.comp,self.apsizeindex]
         targdivided = self.flux[:,0,self.apsizeindex]/compflux
-        dividedlc=targdivided[goodmask]/np.abs(np.mean(targdivided[goodmask]))
-        time = self.time[goodmask]
+        self.dividedlc=targdivided[goodmask]/np.abs(np.mean(targdivided[goodmask]))
+        self.goodtime = self.time[goodmask]
         
         #Plot result
-        self.lcline.setData(time,dividedlc)
-        self.lcscatter.setData(time,dividedlc)
+        self.lcscatter.setData(self.goodtime,self.dividedlc)
         
         
     def clicked(self,item,points):

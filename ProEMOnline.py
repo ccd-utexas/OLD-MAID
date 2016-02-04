@@ -38,6 +38,7 @@ from ProcessLog import ProcessLog
 from ImageDisplay import ImageDisplay
 from FTPlot import FTPlot
 from DividedLC import DividedLC
+from SmoothedLC import SmoothedLC
 
 
 #### BEGIN PROGRAM ####
@@ -435,12 +436,15 @@ s1.sigClicked.connect(clicked)
 
 
 ## Smoothed Light Curve
+'''
 w4 = pg.PlotWidget(title="Smoothed Light Curve",labels={'left': 'smoothed flux', 'bottom': 'time (s)'})
 ss1 = pg.ScatterPlotItem(brush=(255,0,0), pen='w',symbol='o')
 sl1 = pg.PlotCurveItem()
 w4.addItem(ss1)
 w4.addItem(sl1)
-d4.addWidget(w4)
+'''
+smoothedlc = SmoothedLC()
+d4.addWidget(smoothedlc)
 
 
 ## Raw Star/Sky Counts
@@ -892,7 +896,7 @@ def dophot(i):
     #print "photresults dimensions are "+str(mv.photresults.shape)
     #yay.  This deserves to all be checked very carefully, especially since the gain only affects uncertainty and not overall counts.
 
-
+'''
 #Allow different kernel types:
 kerneltypes = ['Uniform','Epanechnikov']
 
@@ -963,23 +967,11 @@ class smoothingkernel:
 
 #set up the kernel object
 kernel=smoothingkernel()
-
+'''
 
 #Update display.
 def updatelcs(i):
     #Identify which points to include/exclude, up to frame i
-    '''
-    goodmask=np.ones(i+1, np.bool)
-    goodmask[mv.bad] = False
-    badmask = np.zeros(i+1, np.bool)
-    badmask[mv.bad] = True
-    targdivided = mv.photresults[:i+1,0,mv.apsizeindex]/mv.photresults[:i+1,mv.compstar,mv.apsizeindex]
-    goodfluxnorm=targdivided[goodmask[:i+1]]/np.abs(np.mean(targdivided[goodmask[:i+1]]))
-    s1.setData(mv.exptime*times[goodmask[:i+1]],goodfluxnorm)
-    #s2.setData(times[badmask[:i]],targdivided[badmask[:i]])
-    l1.setData(mv.exptime*times[goodmask[:i+1]],goodfluxnorm)
-    #sl1.setData(times[goodmask[:i]],fluxsmoothed[goodmask[:i]])
-    '''
     times = np.arange(i+1)#Multiply by exptime for timestamps
     #Divided lc:
     dividedlc.setdata(mv.photresults,mv.compstar,mv.apsizeindex,mv.exptime)
@@ -1003,7 +995,10 @@ def updateft(i=mv.framenum):
         ftplot.calcft(times*mv.exptime,goodfluxnorm-1.,mv.exptime)
         
         #Smoothed LC
+        smoothedlc.plotdata(dividedlc.goodtime,dividedlc.dividedlc-1.,dividedlc.exptime)
+        '''
         if goodmask.sum() > 2:
+        
             #This all requires at least two points
             #Only update once per file read-in
             interped = interp1d(mv.exptime*times[goodmask[:i+1]],goodfluxnorm-1.)
@@ -1015,6 +1010,8 @@ def updateft(i=mv.framenum):
             if len(ynew) > kernel.width:
                 fluxsmoothed=np.convolve(ynew,kernel.kernel,mode='same')
                 ss1.setData(xnew,fluxsmoothed)
+        '''
+            
 
 
 #This timer recomputes the FT and smoothed lc infrequently
