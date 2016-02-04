@@ -18,7 +18,7 @@ class DividedLC(pg.PlotWidget):
         self.lcscatter = self.plot(brush=(255,0,0), pen='w',symbol='o') #Scatter plot
         self.setTitle("Divided Light Curve")
         self.setLabel('left', 'amplitude (mma)')
-        self.setLabel('bottom', 'freq (muHz)')
+        self.setLabel('bottom', 'time (s)')
         
         #Keep track of bad points *not* to be plotted.
         self.badpoints=[]
