@@ -17,18 +17,14 @@ from functools import partial
 from glob import glob
 from scipy import stats
 from scipy.optimize import curve_fit
-from scipy.fftpack import fft,fftfreq
 import pandas as pd
 import os
 import subprocess
 import csv
 import sys
-import time
 import datetime as dt
 import dateutil.parser
-from astropy.io import fits
 from scipy.interpolate import interp1d
-import scipy.ndimage.filters as filters
 from astropy.stats import biweight_location, biweight_midvariance
 from photutils import daofind
 from photutils import CircularAperture, CircularAnnulus, aperture_photometry
@@ -41,7 +37,7 @@ import spephot
 from ProcessLog import ProcessLog
 from ImageDisplay import ImageDisplay
 from FTPlot import FTPlot
-
+from DividedLC import DividedLC
 
 
 #### BEGIN PROGRAM ####
@@ -285,8 +281,6 @@ class WithMenu(QtGui.QMainWindow):
             mv.flat, warnings = spephot.openFlat(fname,mv.darkForFlat,mv.darkForFlatExp)
             if warnings:
                 processLog.log(warnings,3)
-            if mv.darkForFlatExp == 0:
-                processLog.log("Bias being used for flat subtraction.",1)
             processframe()
             displayFrame()
     
@@ -410,21 +404,23 @@ d2.addWidget(w2)
 
 ## Light Curve
 # It's a plot
-w6 = pg.PlotWidget(title="Divided Light Curve",labels={'left': 'rel. flux', 'bottom': 'time (s)'})
+#w6 = pg.PlotWidget(title="Divided Light Curve",labels={'left': 'rel. flux', 'bottom': 'time (s)'})
 # Set up plot components
 # Raw points
-s1 = pg.ScatterPlotItem(brush=(255,0,0), pen='w',symbol='o')
+#s1 = pg.ScatterPlotItem(brush=(255,0,0), pen='w',symbol='o')
 # Bad (ignored) points #Not currently displayed since it causes scaling issues.
 #s2 = pg.ScatterPlotItem(brush=(255,0,0), pen='b',symbol='o')
 # Connecting lines
-l1 = pg.PlotCurveItem()
+#l1 = pg.PlotCurveItem()
 #Add components to plot widget.
-w6.addItem(s1)
+#w6.addItem(s1)
 #w6.addItem(s2)
-w6.addItem(l1)
+#w6.addItem(l1)
+dividedlc = DividedLC()
 #Add widget to dock
-d6.addWidget(w6)
+d6.addWidget(dividedlc)
 # Make points change color when clicked
+'''
 def clicked(plot, points):
     for p in points:
         if p.pos()[0]/mv.exptime in mv.bad:
@@ -435,6 +431,7 @@ def clicked(plot, points):
     
 s1.sigClicked.connect(clicked)
 #s2.sigClicked.connect(clicked)
+'''
 
 
 ## Smoothed Light Curve
@@ -534,12 +531,6 @@ win.raise_()
 
 
 
-
-
-
-
-
-
 # I think everything is set up enough to start doing stuff
 # Send initial message to process log.
 processLog.log("ProEMOnline initialized",2)
@@ -599,12 +590,9 @@ def getexptime(thisspe):
 #Define all the stuff that needs to be done to each incoming frame
 def processframe(i=0):
     (thisframe,thistime) = mv.spe.get_frame(i)
-    #calibrate (doesn't do anything if calibration frames are not available):
-    if mv.dark != []: thisframe=(thisframe-mv.dark)
-    if mv.flat != []: thisframe=thisframe/mv.flat
-    #read in frame
-    mv.img=np.transpose(thisframe)
-    backgroundmed,backgroundvar=charbackground()
+    mv.img=spephot.reduceframe(thisframe,mv.dark,mv.flat)
+    
+    backgroundmed,backgroundvar=spephot.charbackground(mv.img)
 
     #Replace if this frame already exists, otherwise append
     if i <= mv.framenum: #replace
@@ -619,43 +607,11 @@ def processframe(i=0):
         mv.backvar.append(backgroundvar)
     
     mv.framenum=i
-    
-#Function to characterize the background to find stellar centroids accurately
-#This should be done for each frame as it's read in
-def charbackground():
-    """Characterize the image background, median and variance
 
-    for frame currenly held in img  
-    """
-    backgroundmed = biweight_location(mv.img)
-    backgroundvar = biweight_midvariance(mv.img)
-    return backgroundmed, backgroundvar        
- 
+
 #show the image to the widget
 def displayFrame(autoscale=False,markstars=True):
-    """Display an RBG image
-    
-    i is index to display
-    Autoscale optional.
-    Return nothing.
-    """
-    #Make sure i is in range
-    '''
-    if autoscale:
-        #lowlevel=np.min(thisimg[thisimg > 0])
-        lowlevel=np.min(mv.displayimg)
-        if np.sum(mv.displayimg > 0) > 100:
-            lowlevel=np.percentile(mv.displayimg[mv.displayimg > 0],3)
-        highlevel=np.max(mv.displayimg)-1
-        w5.setImage(np.array(mv.displayimg),autoRange=True,levels=[lowlevel,highlevel],)
-    else:
-        w5.setImage(np.array(mv.displayimg),autoRange=False,autoLevels=False)
-    #Draw position circles:
-    if markstars and len(mv.stars) > 0:
-        targs.setData([p[0] for p in mv.stars[mv.framenum]],[p[1] for p in mv.stars[mv.framenum]])
-        targs.setSize(2.*mv.apsizes[mv.apsizeindex])
-        targs.setPen(pencolors[0:mv.numstars])
-    '''
+    #Send images to image display
     imageDisplay.displayImage(mv.img)
     if markstars and len(mv.stars) > 0:
         imageDisplay.displayApertures(mv.stars[mv.framenum],mv.apsizes[mv.apsizeindex])
@@ -820,27 +776,9 @@ def stage2():
     timer3.start(1.*60*1000)#update every 1 minutes
     #This currently freezes up the UI.  Need to thread, but not enough time
     #to implement this currently.  Use a hack for now
-    '''
-    #Run the loop:
-    mv.fsize_spe_old = 0
-    while not mv.hasFooter:
-        #Update only if there's new data
-        fsize_spe_new = os.path.getsize(mv.spefile)
-        if fsize_spe_new > mv.fsize_spe_old:
-            mv.spe = read_spe.File(mv.spefile)
-            mv.numframes = spe.get_num_frames()
-            processLog.log('Processing frames '+str(mv.framenum)+'-'+str(mv.numframes),1)
-            while mv.framenum < mv.numframes:
-                nextframe()
-            if hasattr(mv.spe, 'footer_metadata'): 
-                mv.hasFooter = True
-                processLog.log('SPE footer detected. Data acquisition complete.',2)
-                stagechange(3)
-            mv.spe.close()
-        mv.fsize_spe_old = fsize_spe_new
-    '''
-
-
+    
+    
+    
 def updatehack():
     #Only look for new data if not currently processing new data
     if not timer.isActive():
@@ -1030,17 +968,21 @@ kernel=smoothingkernel()
 #Update display.
 def updatelcs(i):
     #Identify which points to include/exclude, up to frame i
+    '''
     goodmask=np.ones(i+1, np.bool)
     goodmask[mv.bad] = False
     badmask = np.zeros(i+1, np.bool)
     badmask[mv.bad] = True
     targdivided = mv.photresults[:i+1,0,mv.apsizeindex]/mv.photresults[:i+1,mv.compstar,mv.apsizeindex]
-    times = np.arange(i+1)#Multiply by exptime for timestamps
     goodfluxnorm=targdivided[goodmask[:i+1]]/np.abs(np.mean(targdivided[goodmask[:i+1]]))
     s1.setData(mv.exptime*times[goodmask[:i+1]],goodfluxnorm)
     #s2.setData(times[badmask[:i]],targdivided[badmask[:i]])
     l1.setData(mv.exptime*times[goodmask[:i+1]],goodfluxnorm)
     #sl1.setData(times[goodmask[:i]],fluxsmoothed[goodmask[:i]])
+    '''
+    times = np.arange(i+1)#Multiply by exptime for timestamps
+    #Divided lc:
+    dividedlc.setdata(mv.photresults,mv.compstar,mv.apsizeindex,mv.exptime)
     #Raw Counts:
     for j,splot in enumerate(rawcounts): splot.setData(mv.exptime*times,mv.photresults[:,j,mv.apsizeindex])
     #Seeing:
