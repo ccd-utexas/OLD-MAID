@@ -8,13 +8,17 @@ Define a custom widget that shows the divided light curve from raw data.
 """
 
 import pyqtgraph as pg
+from PyQt4 import QtCore
 import numpy as np
 
 class DividedLC(pg.PlotWidget):
     
     def __init__(self):
         super(DividedLC,self).__init__()
-        #self.lcline = pg.PlotCurveItem()
+        #Vertical line shows currently displayed point
+        self.currentind = pg.InfiniteLine(pen='y')
+        self.addItem(self.currentind)
+        #Scatter plot item
         self.lcscatter = self.plot(brush=(255,0,0), pen='w',symbol='o') #Scatter plot
         self.setTitle("Divided Light Curve")
         self.setLabel('left', 'rel. flux')
@@ -23,8 +27,13 @@ class DividedLC(pg.PlotWidget):
         #Keep track of bad points *not* to be plotted.
         self.badpoints=[]
         
-        #Click action
-        self.lcscatter.sigPointsClicked.connect(self.clicked)
+        #Point Click action
+        self.lcscatter.sigPointsClicked.connect(self.pointclicked)
+        
+        #right click action
+        #disable the normal context menu
+        self.setMenuEnabled(False)
+        self.scene().sigMouseClicked.connect(self.rightclicked)
 
     def setdata(self,flux,comp,apsizeindex,exptime):
         '''
@@ -39,8 +48,11 @@ class DividedLC(pg.PlotWidget):
         self.comp=comp
         self.apsizeindex=apsizeindex
         self.exptime=exptime
-        self.time=np.arange(self.flux.shape[0])*self.exptime
+        self.numpts = self.flux.shape[0]
+        self.time=np.arange(self.numpts)*self.exptime
         self.plotlc()
+        
+        
     
     def plotlc(self):
         '''
@@ -60,12 +72,34 @@ class DividedLC(pg.PlotWidget):
         #Plot result
         self.lcscatter.setData(self.goodtime,self.dividedlc)
         
+        #Update vertical line marker if currently located at end of lc
+        if self.currentind.value() >= max(self.goodtime) - self.exptime:
+            self.currentind.setValue(max(self.goodtime))
         
-    def clicked(self,item,points):
+    #Flag point as bad if clicked on
+    def pointclicked(self,item,points):
         #could be multiple overlapping points, so handle them individually
         for point in points:
             self.badpoints.append(point.pos()[0]/self.exptime)
             self.plotlc()
         
+    #Inspect location where right clicked
+    def rightclicked(self,event):
+        if event.button() == 2: #right click
+            event.accept()
+            x=self.lcscatter.getViewBox().mapSceneToView(event.scenePos()).x()
+            ind = np.round(x/self.exptime)
+            if ind > self.numpts: #Follow newest frames
+                ind = self.numpts -1
+            elif ind < 0: ind = 0
+            self.currentind.setValue(ind*self.exptime)
+            #Emit a signal so other views can sync up with this            
+            #self.emit(QtCore.SIGNAL("inspectind"),ind)
+
+        
     def clearbadpoints(self):
+        self.log("Deselecting "+str(len(self.badpoints))+" points.")
         self.badpoints = []
+        
+    def log(self,text,level=0):
+        self.emit(QtCore.SIGNAL("log"),text,level)
