@@ -51,7 +51,7 @@ class KernelDialog(QtGui.QDialog):
         
     @staticmethod
     def getKernelFormat(parent = None):
-        dialog = KernelDialog(parent,width=width)
+        dialog = KernelDialog(parent)
         result = dialog.exec_()
         kerneltype,width = dialog.kernelFormat()
         return (kerneltype,width, result == QtGui.QDialog.Accepted)
@@ -71,25 +71,24 @@ class smoothingkernel:
             u=(2.*np.arange(width)/(float(width)-1.))-0.5
             self.kernel = 0.75*(1.-u**2.)
             self.kernel /= np.sum(self.kernel)
-            self.log("Using "+self.types[kerneltype]+" smoothing kernel of width "+str(width))
         elif kerneltype == 0: #Uniform
             self.kernel = np.ones(width)/float(width)
-            #processLog.log("Using "+self.types[kerneltype]+" smoothing kernel of width "+str(width))
-    def openKernelDialog(self):
+            #processLog.log("Using "+self.types[kerneltype]+" smoothing kernel of width "+str(width)
+        self.kerneltype = kerneltype
+        self.width = width
+    def openKernelDialog(self,currentwidth):
             dkerneltype,dwidth,daccepted = KernelDialog.getKernelFormat()
             if daccepted and (dkerneltype in range(len(self.types))) and (dwidth > 1): 
                 self.setkernel(dkerneltype,dwidth)
-    def log(self,text,level=0):
-        self.emit(QtCore.SIGNAL("log"),text,level)
 
 
 class SmoothedLC(pg.PlotWidget):
     
     def __init__(self):
         super(SmoothedLC,self).__init__()
-        #Vertical line shows currently displayed point
-        self.currentind = pg.InfiniteLine(pen='y')
-        self.addItem(self.currentind)
+        #Vertical line shows currently displayed point #Not necessary in this pane
+        #self.currentind = pg.InfiniteLine(pen='y')
+        #self.addItem(self.currentind)
         #Scatter plot shows light curve
         self.lcscatter = self.plot(brush=(255,0,0), pen='w',symbol='o') #Scatter plot
         self.setTitle("Smoothed Light Curve")
@@ -132,18 +131,15 @@ class SmoothedLC(pg.PlotWidget):
             #update numpts
             self.numpts = max(alltimes)/exptime
             
-    #Inspect location where right clicked
+    #Open prompt to change smoothing kernel on right click
     def rightclicked(self,event):
         if event.button() == 2: #right click
             event.accept()
-            x=self.lcscatter.getViewBox().mapSceneToView(event.scenePos()).x()
-            ind = np.round(x/self.exptime)
-            if ind > self.numpts: #Follow newest frames
-                ind = self.numpts
-            elif ind < 0: ind = 0
-            self.currentind.setValue(ind*self.exptime)
+            self.kernel.openKernelDialog(self.kernel.width)
+            self.log("Smoothing kernel set to type "+self.kernel.types[self.kernel.kerneltype]+" with width {}.".format(self.kernel.width))
             #Emit a signal so other views can sync up with this            
             #self.emit(QtCore.SIGNAL("inspectind"),ind)
-        
+           
+     
     def log(self,text,level=0):
         self.emit(QtCore.SIGNAL("log"),text,level)
