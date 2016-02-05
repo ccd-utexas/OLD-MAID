@@ -39,7 +39,7 @@ from ImageDisplay import ImageDisplay
 from FTPlot import FTPlot
 from DividedLC import DividedLC
 from SmoothedLC import SmoothedLC
-
+from SkyBrightness import SkyBrightness
 
 #### BEGIN PROGRAM ####
 
@@ -288,9 +288,10 @@ class WithMenu(QtGui.QMainWindow):
     
     #Restore previously "bad" points
     def restorePts(self):
-        processLog.log("Deselecting "+str(len(mv.bad))+" points.")
-        mv.bad=[]
-        updatelcs(i=mv.framenum)
+        #processLog.log("Deselecting "+str(len(mv.bad))+" points.")
+        #mv.bad=[]
+        #updatelcs(i=mv.framenum)
+        dividedlc.clearbadpoints()
     
     #Set up aperture size menu options
     def setupApsizeMenu(self): 
@@ -303,7 +304,8 @@ class WithMenu(QtGui.QMainWindow):
     
     #Change Smoothing parameters
     def changeSmooth(self):
-        kernel.openKernelDialog()
+        #kernel.openKernelDialog()
+        smoothedlc.kernel.openKernelDialog()
     
     #Run Photometry
     def run(self):
@@ -342,7 +344,6 @@ win.resize(1500,800)
 win.setWindowTitle('OLD MAID Software')
 
 
-
 ## Set up each of the docks (to hold the widgets)
 d1 = Dock("Observing Log", size=(500,500))
 d2 = Dock("Process Log", size=(500,500))
@@ -366,7 +367,18 @@ area.addDock(d2, 'bottom', d5)
 area.addDock(d3, 'bottom', d7) 
 area.moveDock(d5,'right',d3)
 
+
 #Define and place widgets into the docks
+
+
+#First define the process log, because other things need to be able to connect to it
+## Process Log
+# Records activity.
+w2 = pg.LayoutWidget()
+processLog = ProcessLog()
+w2.addWidget(processLog, 0, 0, 6, 1)
+d2.addWidget(w2)
+
 
 ## First dock holds the Observing Log
 #Type of widget: Form
@@ -395,55 +407,16 @@ w1.addWidget(logEdit, 4, 1, 6, 1)
 #Put the widget in the dock
 d1.addWidget(w1)
 
-
-## Process Log
-# Records activity.
-w2 = pg.LayoutWidget()
-processLog = ProcessLog()
-w2.addWidget(processLog, 0, 0, 6, 1)
-d2.addWidget(w2)
-
 ## Light Curve
-# It's a plot
-#w6 = pg.PlotWidget(title="Divided Light Curve",labels={'left': 'rel. flux', 'bottom': 'time (s)'})
-# Set up plot components
-# Raw points
-#s1 = pg.ScatterPlotItem(brush=(255,0,0), pen='w',symbol='o')
-# Bad (ignored) points #Not currently displayed since it causes scaling issues.
-#s2 = pg.ScatterPlotItem(brush=(255,0,0), pen='b',symbol='o')
-# Connecting lines
-#l1 = pg.PlotCurveItem()
-#Add components to plot widget.
-#w6.addItem(s1)
-#w6.addItem(s2)
-#w6.addItem(l1)
 dividedlc = DividedLC()
+#connect to process log
 #Add widget to dock
 d6.addWidget(dividedlc)
-# Make points change color when clicked
-'''
-def clicked(plot, points):
-    for p in points:
-        if p.pos()[0]/mv.exptime in mv.bad:
-            mv.bad.remove(p.pos()[0]/mv.exptime)
-        else:
-            mv.bad.append(p.pos()[0]/mv.exptime)
-    updatelcs(i=mv.framenum)
-    
-s1.sigClicked.connect(clicked)
-#s2.sigClicked.connect(clicked)
-'''
-
 
 ## Smoothed Light Curve
-'''
-w4 = pg.PlotWidget(title="Smoothed Light Curve",labels={'left': 'smoothed flux', 'bottom': 'time (s)'})
-ss1 = pg.ScatterPlotItem(brush=(255,0,0), pen='w',symbol='o')
-sl1 = pg.PlotCurveItem()
-w4.addItem(ss1)
-w4.addItem(sl1)
-'''
 smoothedlc = SmoothedLC()
+#connect to log
+smoothedlc.connect(smoothedlc,QtCore.SIGNAL("log"),processLog.log)
 d4.addWidget(smoothedlc)
 
 
@@ -454,10 +427,9 @@ d7.addWidget(w7)
 rawcounts=[]
 
 ## Sky
-w8 = pg.PlotWidget(title="Sky Brightness",labels={'left': 'median sky counts', 'bottom': 'time (s)'})
-sky = pg.PlotCurveItem()
-w8.addItem(sky)
-d8.addWidget(w8)
+skybrightness = SkyBrightness()
+d8.addWidget(skybrightness)
+#skybrightness.connect(skybrightness,QtCore.SIGNAL("inspectind"),dividedlc.setind)
 
 ## Seeing
 w9 = pg.PlotWidget(title="Seeing",labels={'left': 'FWHM (pixels)', 'bottom': 'time (s)'})
@@ -467,7 +439,6 @@ w9.addItem(gridlines)
 #Hold the individual plot items in this list once they are created:
 seeingplots = []
 
-
 ## Fourier Transform
 ftplot = FTPlot()
 d3.addWidget(ftplot)
@@ -475,7 +446,6 @@ d3.addWidget(ftplot)
 
 ## Image
 imageDisplay = ImageDisplay()
-#w5.ui.normBtn.hide() #Causing trouble on windows
 #Define function for selecting stars. (must be defined before linking the click action)
 def click(event):#Linked to image click event
     if event.button() == 1 and mv.selectingstars:
@@ -522,14 +492,23 @@ seeingcolors = [pg.mkPen(QtGui.QColor(c), width=1.5) for c in stringcolors]
 d5.addWidget(imageDisplay)
 
 
+#Define a function that connects the displayed index of each relevant widget
+def connectinds(widget):
+    widget.connect(widget,QtCore.SIGNAL("log"),processLog.log)
+    #Use the window to echo signals
+    widget.connect(widget,QtCore.SIGNAL("inspectind"),imageDisplay.setind)
+    imageDisplay.connect(imageDisplay,QtCore.SIGNAL("newind"),widget.setind)
+
+connectinds(dividedlc)
+connectinds(skybrightness)
+
+
 
 ## Show the program!
 win.show()
 win.raise_()
 
 #win.activateWindow()
-
-
 
 
 
@@ -574,7 +553,7 @@ def stage1(fname):
     #Load calibration frames and set up
     processLog.log("Please load dark, flat, and dark for flat files",1)
     #Select stars:
-    selectstars()
+    mv.selectingstars = True
     #mv.spe.close() #In real version we'll close spe
     win.setupApsizeMenu()
         
@@ -601,12 +580,10 @@ def processframe(i=0):
     #Replace if this frame already exists, otherwise append
     if i <= mv.framenum: #replace
         #log('Re-processing frame '+str(i)+' of '+str(mv.framenum))
-        mv.rawtimes[i]=thistime['time_stamp_exposure_started']
         mv.backmed[i]=backgroundmed
         mv.backvar[i]=backgroundvar
     else: #append
         #log('Processing frame '+str(i)+' of '+str(mv.framenum))
-        mv.rawtimes.append(thistime['time_stamp_exposure_started'])
         mv.backmed.append(backgroundmed)
         mv.backvar.append(backgroundvar)
     
@@ -620,14 +597,6 @@ def displayFrame(autoscale=False,markstars=True):
     if markstars and len(mv.stars) > 0:
         imageDisplay.displayApertures(mv.stars[mv.framenum],mv.apsizes[mv.apsizeindex])
         
-        
-def selectstars():
-    '''Select stars in the current frame.
-    
-    Click to select any number in the first image.
-    Click to select numstars in later images to get following back on track.
-    '''
-    mv.selectingstars = True
     
 def gaussian(x, A, sigma):
     #Define a gaussian for finding FWHM
@@ -726,15 +695,6 @@ def improvecoords(x,y,i=mv.framenum,pixdist=10,fwhm=4.0,sigma=5.):
 
 
 
-
-
-
-
-
-
-
-
-
 #### STAGE 2 ####
 
 #Aperture details (provide a way to change these!)
@@ -742,7 +702,6 @@ r_in = 16.  #inner sky annulus radius #change in terms of binning eventually
 r_out = 24. #outer sky annulus radius #change in terms of binning eventually
 def setApSize(size):
     processLog.log("Aperture size set to "+str(size)+" pixels.",1)
-    #processLog.log("(Updates on next frame.)")
     if size in mv.apsizes:
         mv.apsizeindex=np.where(mv.apsizes == size)[0][0]
         if markstars and len(mv.stars) > 0:
@@ -755,8 +714,6 @@ def setCompStar(s):
     mv.compstar = s
     processLog.log("Now dividing by comparsion star #"+str(s),1)
     updatelcs(mv.framenum)
-
-
 
 
 
@@ -778,9 +735,6 @@ def stage2():
     #Start timer that looks for new data
     timer2.start(min(mv.exptime*1000.,5000.))# shorter of exptime and 5 sec
     timer3.start(1.*60*1000)#update every 1 minutes
-    #This currently freezes up the UI.  Need to thread, but not enough time
-    #to implement this currently.  Use a hack for now
-    
     
     
 def updatehack():
@@ -794,7 +748,7 @@ def updatehack():
             mv.numframes = mv.spe.get_num_frames()
             if mv.framenum+1==mv.numframes-1:processLog.log('Processing frame '+str(mv.framenum+1))
             else: processLog.log('Processing frames '+str(mv.framenum+1)+'-'+str(mv.numframes-1),1)        
-            timer.start(100)
+            timer.start(10)
             #Update plots
             updatelcs(i=mv.framenum)
             if hasattr(mv.spe, 'footer_metadata'): 
@@ -828,7 +782,7 @@ timer2.timeout.connect(updatehack)
 
 
 
-#For demo purposes, read in the next frame of the spe file each time this is called
+#Read in the next frame of the spe file each time this is called
 def nextframe():
     #if mv.stage == 2:
     oldcoords = mv.stars[mv.framenum]
@@ -857,7 +811,6 @@ def dophot(i):
     
     Stars have been selected.  Do aperture photometry on given frame
     '''
-    #print "dophot(i) called with i="+str(i)
     #Do the aperture photometry
 
     #The aperture_photometry() function can do many stars at once
@@ -893,81 +846,8 @@ def dophot(i):
         mv.photresults = np.array([thisphotometry])
     else:
         mv.photresults = np.append(mv.photresults,[thisphotometry],axis=0)
-    #print "photresults dimensions are "+str(mv.photresults.shape)
     #yay.  This deserves to all be checked very carefully, especially since the gain only affects uncertainty and not overall counts.
 
-'''
-#Allow different kernel types:
-kerneltypes = ['Uniform','Epanechnikov']
-
-#set up a dialog to change the kernel details:
-class KernelDialog(QtGui.QDialog):
-    def __init__(self, parent=None):
-        super(KernelDialog, self).__init__(parent)
-        typeLabel = QtGui.QLabel("Kernel &type")
-        self.typeEdit = QtGui.QComboBox()
-        self.typeEdit.addItems(kerneltypes)
-        #self.typeEdit.setCurrentIndex(currentind)
-        typeLabel.setBuddy(self.typeEdit)
-        widthLabel = QtGui.QLabel("Kernel &width")
-        self.widthEdit = QtGui.QSpinBox()
-        self.widthEdit.setMinimum(2)
-        self.widthEdit.setMaximum(200)
-        #self.widthEdit.setValue(currentwidth)
-        widthLabel.setBuddy(self.widthEdit)
-        self.buttons = QtGui.QDialogButtonBox(QtGui.QDialogButtonBox.Ok | QtGui.QDialogButtonBox.Cancel,
-                                        QtCore.Qt.Horizontal, self)
-        self.buttons.accepted.connect(self.accept)
-        self.buttons.rejected.connect(self.reject)
-        
-        grid = QtGui.QGridLayout(self)
-        grid.addWidget(typeLabel,0,0)
-        grid.addWidget(self.typeEdit,0,1)
-        grid.addWidget(widthLabel,1,0)
-        grid.addWidget(self.widthEdit,1,1)
-        grid.addWidget(self.buttons, 3, 0)
-        self.setLayout(grid)
-
-        self.setWindowTitle("Define Smoothing Kernel")
-    def kernelFormat(self):
-        kerneltype=int(self.typeEdit.currentIndex())
-        width=int(self.widthEdit.value())
-        return (kerneltype,width)
-        
-    @staticmethod
-    def getKernelFormat(parent = None):
-        dialog = KernelDialog(parent)
-        result = dialog.exec_()
-        kerneltype,width = dialog.kernelFormat()
-        return (kerneltype,width, result == QtGui.QDialog.Accepted)
-
-
-#set up a class that holds all the smoothing kernel information
-class smoothingkernel:
-    """Holds all smoothing kernel info"""
-    kerneltype = 0
-    width = 10 #points
-    kernel=[]
-    types = kerneltypes
-    def setkernel(self,kerneltype,width):
-        if kerneltype == 1: #Epanechnikov
-            u=(2.*np.arange(width)/(float(width)-1.))-0.5
-            self.kernel = 0.75*(1.-u**2.)
-            self.kernel /= np.sum(self.kernel)
-            processLog.log("Using "+self.types[kerneltype]+" smoothing kernel of width "+str(width))
-        elif kerneltype == 0: #Uniform
-            self.kernel = np.ones(width)/float(width)
-            processLog.log("Using "+self.types[kerneltype]+" smoothing kernel of width "+str(width))
-    def openKernelDialog(self):
-            dkerneltype,dwidth,daccepted = KernelDialog.getKernelFormat()
-            if daccepted and (dkerneltype in range(len(kerneltypes))) and (dwidth > 1): 
-                self.setkernel(dkerneltype,dwidth)
-    def __init__(self):
-        self.setkernel(0,10)
-
-#set up the kernel object
-kernel=smoothingkernel()
-'''
 
 #Update display.
 def updatelcs(i):
@@ -980,62 +860,24 @@ def updatelcs(i):
     #Seeing:
     for j,splot in enumerate(seeingplots[::-1]): splot.setData(mv.exptime*times,mv.seeing[:,j])
     #Sky brightness
-    sky.setData(mv.exptime*times,mv.backmed)
+    skybrightness.plotsky(mv.backmed,mv.exptime)
 
 def updateftfromtimer():
     updateft(i=mv.framenum)
 
 def updateft(i=mv.framenum):
-        goodmask=np.ones(i+1, np.bool)
-        goodmask[mv.bad] = False
-        targdivided = mv.photresults[:i+1,0,mv.apsizeindex]/mv.photresults[:i+1,mv.compstar,mv.apsizeindex]
-        goodfluxnorm=targdivided[goodmask[:i+1]]/np.abs(np.mean(targdivided[goodmask[:i+1]]))
-        times = np.arange(i+1)#Multiply by exptime for timestamps
         #Fourier Transform   and smoothed lc  
-        ftplot.calcft(times*mv.exptime,goodfluxnorm-1.,mv.exptime)
+        ftplot.calcft(dividedlc.goodtime,dividedlc.dividedlc-1.,mv.exptime)
         
         #Smoothed LC
         smoothedlc.plotdata(dividedlc.goodtime,dividedlc.dividedlc-1.,dividedlc.exptime)
-        '''
-        if goodmask.sum() > 2:
-        
-            #This all requires at least two points
-            #Only update once per file read-in
-            interped = interp1d(mv.exptime*times[goodmask[:i+1]],goodfluxnorm-1.)
-            xnew = np.arange(mv.exptime*min(times[goodmask[:i]]),mv.exptime*max(times[goodmask[:i+1]]),mv.exptime)
-            ynew = interped(xnew)
 
-            #Smoothed LC
-            #Update if there are enough points:
-            if len(ynew) > kernel.width:
-                fluxsmoothed=np.convolve(ynew,kernel.kernel,mode='same')
-                ss1.setData(xnew,fluxsmoothed)
-        '''
-            
 
 
 #This timer recomputes the FT and smoothed lc infrequently
 timer3 = pg.QtCore.QTimer()
 timer3.timeout.connect(updateftfromtimer)
 
-''' Not implemented yet!
-#To keep the GUI from locking up, computationally intensive processes must
-#be done in a thread.  Set up that thread here:
-class Stage2Thread(QtCore.QThread):
-
-    setTime = QtCore.pyqtSignal(int,int)
-    iteration = QtCore.pyqtSignal(threading.Event, int)
-
-    def run(self):
-
-        self.setTime.emit(0,300)
-        for i in range(300):
-            time.sleep(0.05)
-            event = threading.Event()
-            self.iteration.emit(event, i)
-            event.wait()
-
-'''
 
 
 #Write timestamps

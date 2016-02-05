@@ -19,7 +19,7 @@ class DividedLC(pg.PlotWidget):
         self.currentind = pg.InfiniteLine(pen='y')
         self.addItem(self.currentind)
         #Scatter plot item
-        self.lcscatter = self.plot(brush=(255,0,0), pen='w',symbol='o') #Scatter plot
+        self.lcscatter = self.plot(symbolBrush='r', symbolPen='w',pen='w',symbol='o') #Scatter plot
         self.setTitle("Divided Light Curve")
         self.setLabel('left', 'rel. flux')
         self.setLabel('bottom', 'time (s)')
@@ -94,8 +94,13 @@ class DividedLC(pg.PlotWidget):
             elif ind < 0: ind = 0
             self.currentind.setValue(ind*self.exptime)
             #Emit a signal so other views can sync up with this            
-            #self.emit(QtCore.SIGNAL("inspectind"),ind)
-
+            self.emit(QtCore.SIGNAL("inspectind"),ind)
+            
+    def setind(self,ind):
+        if ind > self.numpts: #Follow newest frames
+                ind = self.numpts -1
+        elif ind < 0: ind = 0
+        self.currentind.setValue(ind*self.exptime)
         
     def clearbadpoints(self):
         self.log("Deselecting "+str(len(self.badpoints))+" points.")
