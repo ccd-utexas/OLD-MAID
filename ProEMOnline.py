@@ -144,7 +144,7 @@ class WithMenu(QtGui.QMainWindow):
         
         #undo recenly selected bad point
         undo = QtGui.QAction('Undo Bad Point Selection', self)
-        utoguide.setShortcut('Ctrl+Z')
+        undo.setShortcut('Ctrl+Z')
         undo.setStatusTip('Return Most Recently Discarded Point to the Light Curve.')
         undo.triggered.connect(self.undoBad)
                 
