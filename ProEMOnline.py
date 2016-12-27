@@ -141,6 +141,12 @@ class WithMenu(QtGui.QMainWindow):
         restorePoints = QtGui.QAction('Restore Points', self)
         restorePoints.setStatusTip('Return All Previously Discarded Points to the Light Curve.')
         restorePoints.triggered.connect(self.restorePts)
+        
+        #undo recenly selected bad point
+        undo = QtGui.QAction('Undo Bad Point Selection', self)
+        utoguide.setShortcut('Ctrl+Z')
+        undo.setStatusTip('Return Most Recently Discarded Point to the Light Curve.')
+        undo.triggered.connect(self.undoBad)
                 
         #Save Layout
         saveLayout = QtGui.QAction('Save Layout', self)
@@ -181,6 +187,7 @@ class WithMenu(QtGui.QMainWindow):
         #Interactions menu
         interactionsMenu = menubar.addMenu('Interact')
         interactionsMenu.addAction(restorePoints)
+        interactionsMenu.addAction(undo)
         self.changeApertureMenu = interactionsMenu.addMenu('Select Aperture Size')
         self.changeCompStarMenu = interactionsMenu.addMenu('Select Comp Star for Division')
         interactionsMenu.addAction(changeSmoothing)
@@ -514,6 +521,11 @@ class WithMenu(QtGui.QMainWindow):
         log("Deselecting "+str(len(bad))+" points.")
         bad=[]
         updatelcs(i=framenum)
+        
+    #Undo most recently selected "bad" point
+    def undoBad(self):
+        global bad
+        _ = bad.pop()
     
     #Set up aperture size menu options
     def setupApsizeMenu(self): 
